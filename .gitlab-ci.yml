@@ -27,6 +27,6 @@ Deploy:
     - docker build .
       --cache-from $CI_REGISTRY_IMAGE:latest
       --build-arg API_URL=$API_URL
-      -t $CI_REGISTRY_IMAGE:next-latest
-      -t $CI_REGISTRY_IMAGE:next-${CI_COMMIT_SHA:0:8}
+      -t $CI_REGISTRY_IMAGE:latest
+      -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
     - docker push $CI_REGISTRY_IMAGE --all-tags
