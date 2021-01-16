@@ -8,7 +8,7 @@ Build:
   stage: Build
   image: golang
   script:
-    - go build -o /dist/bp ./src/main.go
+    - go build -o ./dist/bp ./src/main.go
   artifacts:
     paths:
       - dist
