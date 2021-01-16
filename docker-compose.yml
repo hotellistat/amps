@@ -1,0 +1,7 @@
+version: "3"
+services:
+  bp:
+    network_mode: host
+    env_file: .env
+    build:
+      context: .
