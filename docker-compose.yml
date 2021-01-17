@@ -1,6 +1,6 @@
 version: "3"
 services:
-  bp:
+  batchable:
     network_mode: host
     env_file: .env
     build:

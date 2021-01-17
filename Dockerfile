@@ -1,5 +1,13 @@
-FROM scratch
+FROM alpine AS build
+RUN apk update
+RUN apk upgrade
+RUN apk add --update go gcc g++ make
+WORKDIR /app
+COPY . .
+RUN make build
 
-COPY dist/bp /go/bin/bp
-
-ENTRYPOINT ["/go/bin/bp"]
+FROM alpine
+WORKDIR /app
+RUN cd /app
+COPY --from=build /app/dist .
+ENTRYPOINT ["/app/batchable"]
