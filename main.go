@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -100,7 +101,7 @@ func main() {
 		waitgroup.Done()
 	}
 
-	triggerWorkload := func(id uuid.UUID, msg *stan.Msg, waitgroup *sync.WaitGroup) {
+	triggerWorkload := func(id uuid.UUID, msg *stan.Msg) {
 		values := map[string]string{
 			"timeout": strconv.Itoa(conf.JobTimeout),
 			"id":      id.String(),
@@ -114,11 +115,14 @@ func main() {
 		}
 
 		client := http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 20 * time.Second,
 		}
 
-		client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(jsonData))
-		waitgroup.Done()
+		resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(jsonData))
+		if err == nil {
+			body, _ := ioutil.ReadAll(resp.Body)
+			println("response", string(body))
+		}
 	}
 
 	// Our message handler which will do the main management of each message
@@ -129,10 +133,10 @@ func main() {
 		jobID, _ := uuid.NewRandom()
 
 		var waitgroup sync.WaitGroup
-		waitgroup.Add(2)
+		waitgroup.Add(1)
 
 		go insertJob(jobID, msg, &waitgroup)
-		go triggerWorkload(jobID, msg, &waitgroup)
+		go triggerWorkload(jobID, msg)
 
 		waitgroup.Wait()
 	}
@@ -143,8 +147,7 @@ func main() {
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
 		type Body struct {
-			ID   uuid.UUID
-			data string
+			ID string
 		}
 
 		var d Body
@@ -153,8 +156,15 @@ func main() {
 			w.WriteHeader(http.StatusNotAcceptable)
 		}
 
+		println("Deleting Job ID:", d.ID)
 		mutex.Lock()
-		delete(jobManifest, d.ID)
+		parsedJobID, err := uuid.Parse(d.ID)
+
+		if err != nil {
+			return
+		}
+
+		delete(jobManifest, parsedJobID)
 
 		if int(len(jobManifest)) < maxConcurrency {
 			// Initialize a new subscription should the old one have been closed
