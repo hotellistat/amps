@@ -4,7 +4,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
 	"hotellistat.com/m/v2/config"
@@ -22,14 +21,14 @@ type natsshim struct {
 func (n *natsshim) Initialize(config config.Config) {
 	n.config = config
 
+	log.Println(config.NatsHost, config.NatsCluster)
+
 	nc, err := nats.Connect(config.NatsHost)
 	if err != nil {
 		log.Fatal("Could not connect to NATS")
 	}
 
-	workerID, _ := uuid.NewRandom()
-
-	log.Println("Worker ID:", workerID)
+	log.Println("Worker ID:", config.WorkerID)
 
 	sc, err := stan.Connect(config.NatsCluster, config.WorkerID, stan.NatsConn(nc), stan.SetConnectionLostHandler(func(_ stan.Conn, reason error) {
 		log.Fatalf("Connection lost, reason: %v", reason)
