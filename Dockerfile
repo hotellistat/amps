@@ -1,7 +1,5 @@
 FROM alpine AS build
-RUN apk update
-RUN apk upgrade
-RUN apk add --update go gcc g++ make
+RUN apk add --no-cache go git make build-base
 WORKDIR /app
 COPY . .
 RUN make build

@@ -1,17 +1,5 @@
-
-
 stages:
-  - Build
   - Deploy
-
-Build:
-  stage: Build
-  image: golang
-  script:
-    - go build -o ./dist/bp ./src/main.go
-  artifacts:
-    paths:
-      - dist
 
 Deploy:
   stage: Deploy
