@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Config represents the global configuation for this project
@@ -23,10 +25,13 @@ type Config struct {
 
 // New returns a new Config struct
 func New() *Config {
+
+	workerID, _ := uuid.NewRandom()
+
 	return &Config{
 		NatsHost:           getEnv("BATCHABLE_NATS_HOST", "localhost:4223"),
 		NatsCluster:        getEnv("BATCHABLE_NATS_CLUSTER", "nats-cluster"),
-		WorkerID:           getEnvRequired("BATCHABLE_WORKER_ID"),
+		WorkerID:           getEnv("BATCHABLE_WORKER_ID", workerID.String()),
 		BrokerType:         getEnv("BATCHABLE_BROKER_TYPE", "nats"),
 		BrokerSubject:      getEnvRequired("BATCHABLE_BROKER_SUBJECT"),
 		BrokerDurableGroup: getEnv("BATCHABLE_BROKER_DURABLE_GROUP", ""),

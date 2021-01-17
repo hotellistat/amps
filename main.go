@@ -14,10 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"batchable/config"
+
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/nats-io/stan.go"
-	"hotellistat.com/m/v2/config"
 )
 
 // A Job represents one current workitem that needs to be processed

@@ -4,9 +4,10 @@ import (
 	"log"
 	"time"
 
+	"batchable/config"
+
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
-	"hotellistat.com/m/v2/config"
 )
 
 // natsshim represents the primary natsshim communication instance
