@@ -24,7 +24,7 @@ type Job struct {
 	message *stan.Msg
 }
 
-func timeoutWatchdog(brokerInstance *broker.NATS, jobManifest map[uuid.UUID]Job, messageCallback stan.MsgHandler) {
+func timeoutWatchdog(brokerShim *broker.NATS, jobManifest map[uuid.UUID]Job, messageCallback stan.MsgHandler) {
 	for {
 		maxLifetime, _ := strconv.ParseInt(os.Getenv("JOB_TIMEOUT"), 10, 64)
 
@@ -38,7 +38,7 @@ func timeoutWatchdog(brokerInstance *broker.NATS, jobManifest map[uuid.UUID]Job,
 		maxConcurrency, _ := strconv.ParseInt(os.Getenv("MAX_CONCURRENCY"), 10, 8)
 
 		if int64(len(jobManifest)) <= maxConcurrency {
-			brokerInstance.Start(messageCallback)
+			brokerShim.Start(messageCallback)
 		}
 
 		time.Sleep(1 * time.Second)
@@ -54,7 +54,7 @@ func main() {
 	jobManifest := make(map[uuid.UUID]Job)
 
 	// Initialize a new broker instance, which is a general abstraction of the NATS go library
-	brokerInstance := broker.Initialize()
+	brokerShim := broker.Initialize()
 
 	// W need a mutext so that the manifest length check doesn't run into a race condition
 	var mutex = &sync.Mutex{}
@@ -70,7 +70,7 @@ func main() {
 		mutex.Lock()
 
 		if int64(len(jobManifest)) > maxConcurrency {
-			brokerInstance.Stop()
+			brokerShim.Stop()
 		}
 
 		mutex.Unlock()
@@ -112,7 +112,7 @@ func main() {
 	}
 
 	// Create a new subscription for nats streaming
-	brokerInstance.Start(messageHandler)
+	brokerShim.Start(messageHandler)
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
@@ -132,7 +132,7 @@ func main() {
 
 		if int64(len(jobManifest)) <= maxConcurrency {
 			// Initialize a new subscription should the old one have been closed
-			brokerInstance.Start(messageHandler)
+			brokerShim.Start(messageHandler)
 		}
 		mutex.Unlock()
 
@@ -142,7 +142,7 @@ func main() {
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if os.Getenv("JOB_TIMEOUT") != "false" {
-		go timeoutWatchdog(&brokerInstance, jobManifest, messageHandler)
+		go timeoutWatchdog(&brokerShim, jobManifest, messageHandler)
 	}
 
 	// General signal handling to teardown the worker
@@ -152,7 +152,7 @@ func main() {
 	go func() {
 		for range signalChan {
 			fmt.Printf("\nReceived an interrupt, closing connection...\n\n")
-			brokerInstance.Teardown()
+			brokerShim.Teardown()
 
 			cleanupDone <- true
 		}
