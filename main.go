@@ -152,15 +152,18 @@ func main() {
 
 		var d Body
 		err := json.NewDecoder(req.Body).Decode(&d)
-		if err != nil {
+		if err != nil || d.ID == "" {
 			w.WriteHeader(http.StatusNotAcceptable)
+			w.Write([]byte("Missing Job ID"))
+			return
 		}
 
 		println("Deleting Job ID:", d.ID)
 		mutex.Lock()
 		parsedJobID, err := uuid.Parse(d.ID)
-
 		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			mutex.Unlock()
 			return
 		}
 
@@ -172,6 +175,8 @@ func main() {
 		}
 		mutex.Unlock()
 
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("OK"))
 	})
 
 	go http.ListenAndServe(":4000", nil)
