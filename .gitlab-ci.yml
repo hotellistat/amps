@@ -1,5 +1,6 @@
 stages:
   - Deploy
+  - Update
 
 Deploy:
   stage: Deploy
@@ -18,3 +19,16 @@ Deploy:
       -t $CI_REGISTRY_IMAGE:latest
       -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
     - docker push $CI_REGISTRY_IMAGE --all-tags
+
+Kubernetes update:
+  stage: Update
+  image: dtzar/helm-kubectl
+  dependencies:
+    - Deploy
+  script:
+    - kubectl config set-cluster k8s --server="${SERVER}"
+    - kubectl config set clusters.k8s.certificate-authority-data ${CERTIFICATE_AUTHORITY}
+    - kubectl config set-credentials gitlab --token="${USER_TOKEN}"
+    - kubectl config set-context default --namespace=default --cluster=k8s --user=gitlab
+    - kubectl config use-context default
+    - kubectl set image deployments/crawling -n prod-v1 batchable=$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
