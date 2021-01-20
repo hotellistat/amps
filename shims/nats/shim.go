@@ -96,9 +96,11 @@ func (n *natsshim) Stop() {
 
 // Publish result will publish the worker result to the message queue
 func (n *natsshim) PublishResult(config config.Config, msg []byte) {
-	err := n.stanConnection.Publish(config.BrokerResultSubject, msg)
-	if err != nil {
-		log.Fatal("Could not Publish result: ", string(msg))
+	if config.BrokerResultSubject != "" {
+		err := n.stanConnection.Publish(config.BrokerResultSubject, msg)
+		if err != nil {
+			log.Fatal("Could not Publish result: ", string(msg))
+		}
 	}
 }
 
