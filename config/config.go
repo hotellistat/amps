@@ -9,16 +9,18 @@ import (
 
 // Config represents the global configuation for this project
 type Config struct {
-	NatsHost           string
-	NatsCluster        string
-	WorkerID           string
-	BrokerType         string
-	BrokerSubject      string
-	BrokerDurableGroup string
-	BrokerQueueGroup   string
-	JobTimeout         int
-	MaxConcurrency     int
-	WorkloadAddress    string
+	NatsHost            string
+	NatsCluster         string
+	WorkerID            string
+	BrokerType          string
+	BrokerSubject       string
+	BrokerResultSubject string
+	BrokerDurableGroup  string
+	BrokerQueueGroup    string
+	Debug               bool
+	JobTimeout          int
+	MaxConcurrency      int
+	WorkloadAddress     string
 }
 
 // New returns a new Config struct
@@ -27,16 +29,18 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		NatsHost:           getEnv("BATCHABLE_NATS_HOST", "localhost:4223"),
-		NatsCluster:        getEnv("BATCHABLE_NATS_CLUSTER", "nats-cluster"),
-		WorkerID:           getEnv("BATCHABLE_WORKER_ID", workerID),
-		BrokerType:         getEnv("BATCHABLE_BROKER_TYPE", "nats"),
-		BrokerSubject:      getEnvRequired("BATCHABLE_BROKER_SUBJECT"),
-		BrokerDurableGroup: getEnv("BATCHABLE_BROKER_DURABLE_GROUP", ""),
-		BrokerQueueGroup:   getEnv("BATCHABLE_BROKER_QUEUE_GROUP", ""),
-		JobTimeout:         getEnvAsInt("BATCHABLE_JOB_TIMEOUT", 120),
-		MaxConcurrency:     getEnvAsInt("BATCHABLE_MAX_CONCURRENCY", 100),
-		WorkloadAddress:    getEnv("BATCHABLE_WORKLOAD_ADDRESS", "http://localhost:5050"),
+		NatsHost:            getEnv("NATS_HOST", "localhost:4223"),
+		NatsCluster:         getEnv("NATS_CLUSTER", "nats-cluster"),
+		WorkerID:            getEnv("WORKER_ID", workerID),
+		BrokerType:          getEnv("BROKER_TYPE", "nats"),
+		BrokerSubject:       getEnvRequired("BROKER_SUBJECT"),
+		BrokerResultSubject: getEnv("BROKER_RESULT_SUBJECT", ""),
+		BrokerDurableGroup:  getEnv("BROKER_DURABLE_GROUP", ""),
+		BrokerQueueGroup:    getEnv("BROKER_QUEUE_GROUP", ""),
+		Debug:               getEnv("BROKER_QUEUE_GROUP", "") == "true",
+		JobTimeout:          getEnvAsInt("JOB_TIMEOUT", 120),
+		MaxConcurrency:      getEnvAsInt("MAX_CONCURRENCY", 100),
+		WorkloadAddress:     getEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
 	}
 }
 

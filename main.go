@@ -34,6 +34,7 @@ type BrokerShim interface {
 	Teardown()
 	Start(stan.MsgHandler)
 	Stop()
+	PublishResult(config.Config, []byte)
 }
 
 func main() {
@@ -60,7 +61,6 @@ func main() {
 
 	plug, err := plugin.Open(mod)
 	if err != nil {
-		fmt.Println("yho", err)
 		os.Exit(1)
 	}
 
@@ -71,6 +71,10 @@ func main() {
 	}
 
 	broker := symBrokerShim.(BrokerShim)
+
+	if conf.Debug {
+		log.Println("Broker shim successfully loaded")
+	}
 
 	maxConcurrency := conf.MaxConcurrency
 
@@ -85,13 +89,13 @@ func main() {
 
 	insertJob := func(id uuid.UUID, msg *stan.Msg, waitgroup *sync.WaitGroup) {
 		// Mutex takes care of the before mentioned race condtition
+		mutex.Lock()
+
 		// Create a new job and push it to the jobManifest
 		jobManifest[id] = Job{
 			created: time.Now(),
 			message: msg,
 		}
-
-		mutex.Lock()
 
 		if int(len(jobManifest)) >= maxConcurrency {
 			broker.Stop()
@@ -128,9 +132,12 @@ func main() {
 	// Our message handler which will do the main management of each message
 	messageHandler := func(msg *stan.Msg) {
 		msg.Ack()
-		log.Println(string(msg.Data))
 		// Each Job recieves a UUID so we can target a specific job inside of this worker
 		jobID, _ := uuid.NewRandom()
+
+		if conf.Debug {
+			log.Println("Job ID:", jobID, "Data:", string(msg.Data))
+		}
 
 		var waitgroup sync.WaitGroup
 		waitgroup.Add(1)
@@ -147,7 +154,8 @@ func main() {
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
 		type Body struct {
-			ID string
+			ID   string
+			Data string
 		}
 
 		var d Body
@@ -158,7 +166,10 @@ func main() {
 			return
 		}
 
-		println("Deleting Job ID:", d.ID)
+		if conf.Debug {
+			println("Deleting Job ID:", d.ID)
+		}
+
 		mutex.Lock()
 		parsedJobID, err := uuid.Parse(d.ID)
 		if err != nil {
@@ -168,6 +179,8 @@ func main() {
 		}
 
 		delete(jobManifest, parsedJobID)
+
+		broker.PublishResult(*conf, []byte(d.Data))
 
 		if int(len(jobManifest)) < maxConcurrency {
 			// Initialize a new subscription should the old one have been closed
@@ -189,7 +202,9 @@ func main() {
 
 				for id, job := range jobManifest {
 					if int(time.Now().Unix()-job.created.Unix()) > maxLifetime {
-						log.Println("Job Timeout, ID:", id)
+						if conf.Debug {
+							log.Println("Job Timeout, ID:", id)
+						}
 						delete(jobManifest, id)
 					}
 				}
