@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"time"
 
@@ -95,13 +96,15 @@ func (n *natsshim) Stop() {
 }
 
 // Publish result will publish the worker result to the message queue
-func (n *natsshim) PublishResult(config config.Config, msg []byte) {
+func (n *natsshim) PublishResult(config config.Config, msg []byte) error {
 	if config.BrokerResultSubject != "" {
 		err := n.stanConnection.Publish(config.BrokerResultSubject, msg)
 		if err != nil {
 			log.Fatal("Could not Publish result: ", string(msg))
+			return errors.New("Could not Publish result: " + string(msg))
 		}
 	}
+	return nil
 }
 
 // BrokerShimExport is our collective broker name

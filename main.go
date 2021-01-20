@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,13 +12,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"plugin"
-	"strconv"
 	"sync"
 	"time"
 
 	"batchable/config"
 
-	"github.com/google/uuid"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/joho/godotenv"
 	"github.com/nats-io/stan.go"
 )
@@ -34,7 +34,7 @@ type BrokerShim interface {
 	Teardown()
 	Start(stan.MsgHandler)
 	Stop()
-	PublishResult(config.Config, []byte)
+	PublishResult(config.Config, []byte) error
 }
 
 func main() {
@@ -79,7 +79,7 @@ func main() {
 	maxConcurrency := conf.MaxConcurrency
 
 	// Initialize our job manifest. This will hold all currently active jobs for this worker
-	jobManifest := make(map[uuid.UUID]Job)
+	jobManifest := make(map[string]Job)
 
 	// Initialize a new broker instance, which is a general abstraction of the NATS go library
 	broker.Initialize(*conf)
@@ -87,10 +87,15 @@ func main() {
 	// W need a mutext so that the manifest length check doesn't run into a race condition
 	var mutex = &sync.Mutex{}
 
-	insertJob := func(id uuid.UUID, msg *stan.Msg, waitgroup *sync.WaitGroup) {
+	insertJob := func(id string, msg *stan.Msg, event cloudevents.Event) error {
 		// Mutex takes care of the before mentioned race condtition
 		mutex.Lock()
 
+		_, isDuplicate := jobManifest[id]
+		if isDuplicate {
+			mutex.Unlock()
+			return errors.New("A Job with this ID already exists")
+		}
 		// Create a new job and push it to the jobManifest
 		jobManifest[id] = Job{
 			created: time.Now(),
@@ -102,48 +107,57 @@ func main() {
 		}
 
 		mutex.Unlock()
-		waitgroup.Done()
+		return nil
 	}
 
-	triggerWorkload := func(id uuid.UUID, msg *stan.Msg) {
-		values := map[string]string{
-			"timeout": strconv.Itoa(conf.JobTimeout),
-			"id":      id.String(),
-			"data":    string(msg.Data),
-		}
+	triggerWorkload := func(event cloudevents.Event, waitgroup *sync.WaitGroup) {
 
-		jsonData, err := json.Marshal(values)
+		eventData, err := json.Marshal(event)
 
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("Could not marshal cloudevent for workload")
+			return
 		}
 
 		client := http.Client{
 			Timeout: 20 * time.Second,
 		}
 
-		resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(jsonData))
+		resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(eventData))
 		if err == nil {
 			body, _ := ioutil.ReadAll(resp.Body)
 			println("response", string(body))
 		}
+
+		waitgroup.Done()
 	}
 
 	// Our message handler which will do the main management of each message
 	messageHandler := func(msg *stan.Msg) {
 		msg.Ack()
-		// Each Job recieves a UUID so we can target a specific job inside of this worker
-		jobID, _ := uuid.NewRandom()
+
+		event := cloudevents.NewEvent()
+
+		err := json.Unmarshal(msg.Data, &event)
+
+		if err != nil {
+			log.Fatal("Could not Marshal Cloud Event")
+			return
+		}
 
 		if conf.Debug {
-			log.Println("Job ID:", jobID, "Data:", string(msg.Data))
+			log.Println("Job ID:", event.Context.GetID(), "Data:", string(msg.Data))
 		}
 
 		var waitgroup sync.WaitGroup
 		waitgroup.Add(1)
 
-		go insertJob(jobID, msg, &waitgroup)
-		go triggerWorkload(jobID, msg)
+		go triggerWorkload(event, &waitgroup)
+
+		insertErr := insertJob(event.Context.GetID(), msg, event)
+		if insertErr != nil {
+			log.Println(insertErr.Error())
+		}
 
 		waitgroup.Wait()
 	}
@@ -153,34 +167,41 @@ func main() {
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
-		type Body struct {
-			ID   string
-			Data string
-		}
 
-		var d Body
-		err := json.NewDecoder(req.Body).Decode(&d)
-		if err != nil || d.ID == "" {
-			w.WriteHeader(http.StatusNotAcceptable)
-			w.Write([]byte("Missing Job ID"))
+		cloudevent := cloudevents.NewEvent()
+
+		body, readErr := ioutil.ReadAll(req.Body)
+
+		if readErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Could not read request Body"))
 			return
 		}
 
-		if conf.Debug {
-			println("Deleting Job ID:", d.ID)
+		ceErr := json.Unmarshal(body, &cloudevent)
+
+		if ceErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Can not unmarshal cloudevent, make sure you send a cloudevent in structured content mode"))
+			return
 		}
 
-		mutex.Lock()
-		parsedJobID, err := uuid.Parse(d.ID)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+		jobID := cloudevent.Context.GetID()
+
+		if conf.Debug {
+			println("Deleting Job ID:", jobID)
+		}
+
+		publishErr := broker.PublishResult(*conf, cloudevent.DataEncoded)
+		if publishErr != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Could not publish your event to the broker"))
 			mutex.Unlock()
 			return
 		}
 
-		delete(jobManifest, parsedJobID)
-
-		broker.PublishResult(*conf, []byte(d.Data))
+		mutex.Lock()
+		delete(jobManifest, jobID)
 
 		if int(len(jobManifest)) < maxConcurrency {
 			// Initialize a new subscription should the old one have been closed

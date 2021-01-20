@@ -37,7 +37,7 @@ func New() *Config {
 		BrokerResultSubject: getEnv("BROKER_RESULT_SUBJECT", ""),
 		BrokerDurableGroup:  getEnv("BROKER_DURABLE_GROUP", ""),
 		BrokerQueueGroup:    getEnv("BROKER_QUEUE_GROUP", ""),
-		Debug:               getEnv("BROKER_QUEUE_GROUP", "") == "true",
+		Debug:               getEnv("DEBUG", "") == "true",
 		JobTimeout:          getEnvAsInt("JOB_TIMEOUT", 120),
 		MaxConcurrency:      getEnvAsInt("MAX_CONCURRENCY", 100),
 		WorkloadAddress:     getEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
