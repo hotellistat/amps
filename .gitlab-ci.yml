@@ -42,6 +42,8 @@ Release:
 Kubernetes update:
   stage: Update
   image: dtzar/helm-kubectl
+  only:
+    - master
   dependencies:
     - Deploy
   script:
