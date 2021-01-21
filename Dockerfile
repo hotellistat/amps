@@ -1,11 +1,10 @@
-FROM alpine AS build
-RUN apk add --no-cache go git make build-base
+FROM golang AS build
 WORKDIR /app
 COPY . .
+RUN ls -la
 RUN make build
+RUN ls -la dist
 
-FROM alpine
-WORKDIR /app
-RUN cd /app
-COPY --from=build /app/dist .
-ENTRYPOINT ["/app/batchable"]
+FROM scratch
+COPY --from=build /app/dist/batchable /go/bin/batchable
+ENTRYPOINT ["/go/bin/batchable"]
