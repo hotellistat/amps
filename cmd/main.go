@@ -17,6 +17,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/joho/godotenv"
 	"github.com/nats-io/stan.go"
 )
@@ -33,7 +34,7 @@ type BrokerShim interface {
 	Teardown()
 	Start(stan.MsgHandler)
 	Stop()
-	PublishResult(config.Config, []byte) error
+	PublishResult(config.Config, event.Event) error
 }
 
 func insertJob(
@@ -95,7 +96,7 @@ func main() {
 		eventData, err := json.Marshal(event)
 
 		if err != nil {
-			log.Fatal("Could not marshal cloudevent for workload")
+			log.Println("Could not marshal cloudevent for workload")
 			return
 		}
 
@@ -123,7 +124,7 @@ func main() {
 		err := json.Unmarshal(msg.Data, &event)
 
 		if err != nil {
-			log.Fatal("Could not Marshal Cloud Event")
+			log.Println("Could not Marshal Cloud Event")
 			return
 		}
 
@@ -174,7 +175,7 @@ func main() {
 			println("Deleting Job ID:", jobID)
 		}
 
-		publishErr := broker.PublishResult(*conf, cloudevent.DataEncoded)
+		publishErr := broker.PublishResult(*conf, cloudevent)
 		if publishErr != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Could not publish your event to the broker"))

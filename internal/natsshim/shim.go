@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
 )
@@ -95,12 +96,14 @@ func (n *NatsBroker) Stop() {
 }
 
 // PublishResult result will publish the worker result to the message queue
-func (n *NatsBroker) PublishResult(config config.Config, msg []byte) error {
+func (n *NatsBroker) PublishResult(config config.Config, event event.Event) error {
 	if config.BrokerResultSubject != "" {
-		err := n.stanConnection.Publish(config.BrokerResultSubject, msg)
+
+		encodedData := event.DataEncoded
+		err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
 		if err != nil {
-			log.Fatal("Could not Publish result: ", string(msg))
-			return errors.New("Could not Publish result: " + string(msg))
+			log.Println("Could not Publish result: ", string(encodedData))
+			return errors.New("Could not Publish result: " + string(encodedData))
 		}
 	}
 	return nil

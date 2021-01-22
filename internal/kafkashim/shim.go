@@ -3,6 +3,7 @@ package kafkashim
 import (
 	"batchable/internal/config"
 
+	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/nats-io/stan.go"
 )
 
@@ -31,6 +32,6 @@ func (n *KafkaBroker) Stop() {
 }
 
 // PublishResult result will publish the worker result to the message queue
-func (n *KafkaBroker) PublishResult(config config.Config, msg []byte) error {
+func (n *KafkaBroker) PublishResult(config config.Config, event event.Event) error {
 	return nil
 }
