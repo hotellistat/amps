@@ -169,18 +169,25 @@ func main() {
 			return
 		}
 
+		// Fetch the nopublish event context extension. This will prevent publishing the recieved event to our broker.
+		// This is normally used, if you want to define the end of a chain of workloads, where the last link of the chain
+		// Should not create any new events in the broker anymore
+		data, _ := cloudevent.Context.GetExtension("nopublish")
+
 		jobID := cloudevent.Context.GetID()
 
 		if conf.Debug {
 			println("Deleting Job ID:", jobID)
 		}
 
-		publishErr := broker.PublishResult(*conf, cloudevent)
-		if publishErr != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Could not publish your event to the broker"))
-			mutex.Unlock()
-			return
+		if data != true {
+			publishErr := broker.PublishResult(*conf, cloudevent)
+			if publishErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Could not publish your event to the broker"))
+				mutex.Unlock()
+				return
+			}
 		}
 
 		mutex.Lock()
