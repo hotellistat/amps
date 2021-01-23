@@ -4,7 +4,6 @@ import (
 	"batchable/internal/config"
 	"errors"
 	"log"
-	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/nats-io/nats.go"
@@ -69,15 +68,13 @@ func (n *NatsBroker) Start(messageCallback stan.MsgHandler) {
 		return
 	}
 
-	aw, _ := time.ParseDuration("60s")
-
 	sub, err := n.stanConnection.QueueSubscribe(
 		n.config.BrokerSubject,
 		n.config.BrokerQueueGroup,
 		messageCallback,
 		stan.DurableName(n.config.BrokerDurableGroup),
 		stan.SetManualAckMode(),
-		stan.AckWait(aw),
+		stan.AckWait(config.New().WorkloadResponseTimeout),
 	)
 
 	_ = sub
