@@ -78,7 +78,12 @@ func insertJob(
 	mutex.Unlock()
 }
 
-func triggerWorkload(event cloudevents.Event, conf config.Config, waitgroup *sync.WaitGroup, ch chan<- error) {
+func triggerWorkload(
+	event cloudevents.Event,
+	conf config.Config,
+	waitgroup *sync.WaitGroup,
+	ch chan<- error) {
+
 	eventData, err := json.Marshal(event)
 
 	if err != nil {
@@ -101,6 +106,54 @@ func triggerWorkload(event cloudevents.Event, conf config.Config, waitgroup *syn
 	ch <- nil
 	close(ch)
 	waitgroup.Done()
+}
+
+func messageHandler(
+	msg *stan.Msg,
+	conf *config.Config,
+	jobManifest map[string]Job,
+	broker BrokerShim,
+	mutex *sync.Mutex) {
+
+	event := cloudevents.NewEvent()
+
+	err := json.Unmarshal(msg.Data, &event)
+
+	if err != nil {
+		log.Println("Could not Marshal Cloud Event")
+		return
+	}
+
+	if conf.Debug {
+		log.Println("Job ID:", event.Context.GetID())
+	}
+
+	var waitgroup sync.WaitGroup
+	waitgroup.Add(2)
+
+	workloadErr := make(chan error, 1)
+	go triggerWorkload(event, *conf, &waitgroup, workloadErr)
+
+	insertJobErr := make(chan error, 1)
+	go insertJob(event, jobManifest, &broker, *conf, mutex, &waitgroup, insertJobErr)
+
+	workloadErrResult := <-workloadErr
+	insertJobErrResult := <-insertJobErr
+	waitgroup.Wait()
+
+	if workloadErrResult != nil {
+		log.Println(workloadErrResult)
+	}
+
+	if insertJobErrResult != nil {
+		log.Println(insertJobErrResult)
+	}
+
+	if workloadErrResult == nil && insertJobErrResult == nil {
+		msg.Ack()
+	} else {
+		log.Println("Job ID:", event.Context.GetID(), "could not be acknowledged")
+	}
 }
 
 func main() {
@@ -127,51 +180,10 @@ func main() {
 
 	var mutex = &sync.Mutex{}
 
-	// Our message handler which will do the main management of each message
-	messageHandler := func(msg *stan.Msg) {
-		event := cloudevents.NewEvent()
-
-		err := json.Unmarshal(msg.Data, &event)
-
-		if err != nil {
-			log.Println("Could not Marshal Cloud Event")
-			return
-		}
-
-		if conf.Debug {
-			log.Println("Job ID:", event.Context.GetID())
-		}
-
-		var waitgroup sync.WaitGroup
-		waitgroup.Add(2)
-
-		workloadErr := make(chan error, 1)
-		go triggerWorkload(event, *conf, &waitgroup, workloadErr)
-
-		insertJobErr := make(chan error, 1)
-		go insertJob(event, jobManifest, &broker, *conf, mutex, &waitgroup, insertJobErr)
-
-		workloadErrResult := <-workloadErr
-		insertJobErrResult := <-insertJobErr
-		waitgroup.Wait()
-
-		if workloadErrResult != nil {
-			log.Println(workloadErrResult)
-		}
-
-		if insertJobErrResult != nil {
-			log.Println(insertJobErrResult)
-		}
-
-		if workloadErrResult == nil && insertJobErrResult == nil {
-			msg.Ack()
-		} else {
-			log.Println("Job ID:", event.Context.GetID(), "could not be acknowledged")
-		}
-	}
-
 	// Create a new subscription for nats streaming
-	broker.Start(messageHandler)
+	broker.Start(func(msg *stan.Msg) {
+		messageHandler(msg, conf, jobManifest, broker, mutex)
+	})
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
@@ -216,10 +228,13 @@ func main() {
 		}
 
 		mutex.Lock()
+
 		delete(jobManifest, jobID)
 		if int(len(jobManifest)) < conf.MaxConcurrency {
 			// Initialize a new subscription should the old one have been closed
-			broker.Start(messageHandler)
+			broker.Start(func(msg *stan.Msg) {
+				messageHandler(msg, conf, jobManifest, broker, mutex)
+			})
 		}
 		mutex.Unlock()
 
@@ -245,7 +260,9 @@ func main() {
 				}
 
 				if int(len(jobManifest)) < conf.MaxConcurrency {
-					broker.Start(messageHandler)
+					broker.Start(func(msg *stan.Msg) {
+						messageHandler(msg, conf, jobManifest, broker, mutex)
+					})
 				}
 
 				sleepTime, _ := time.ParseDuration("250ms")
