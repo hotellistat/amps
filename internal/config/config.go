@@ -31,15 +31,14 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		NatsHost:                getEnv("NATS_HOST", "localhost:4223"),
-		NatsCluster:             getEnv("NATS_CLUSTER", "nats-cluster"),
+		NatsHost:                getEnv("BROKER_HOST", "localhost:4223"),
+		NatsCluster:             getEnv("BROKER_CLUSTER", "nats-cluster"),
 		WorkerID:                getEnv("WORKER_ID", workerID),
 		BrokerType:              getEnv("BROKER_TYPE", "nats"),
 		BrokerSubject:           getEnvRequired("BROKER_SUBJECT"),
-		BrokerResultSubject:     getEnv("BROKER_RESULT_SUBJECT", ""),
 		BrokerDurableGroup:      getEnv("BROKER_DURABLE_GROUP", ""),
 		BrokerQueueGroup:        getEnv("BROKER_QUEUE_GROUP", ""),
-		Debug:                   getEnv("DEBUG", "") == "true",
+		Debug:                   getEnvAsBool("DEBUG", false),
 		MaxConcurrency:          getEnvAsInt("MAX_CONCURRENCY", 100),
 		JobTimeout:              getEnvAsTime("JOB_TIMEOUT", "2m"),
 		WorkloadResponseTimeout: getEnvAsTime("WORKLOAD_RESPONSE_TIMEOUT", "10s"),
