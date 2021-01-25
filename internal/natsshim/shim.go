@@ -22,16 +22,16 @@ type NatsBroker struct {
 func (n *NatsBroker) Initialize(config config.Config) {
 	n.config = config
 
-	log.Println(config.NatsHost, config.NatsCluster)
+	log.Println(config.BrokerHost, config.BrokerCluster)
 
-	nc, err := nats.Connect(config.NatsHost)
+	nc, err := nats.Connect(config.BrokerHost)
 	if err != nil {
 		log.Fatal("Could not connect to NATS")
 	}
 
 	log.Println("Worker ID:", config.WorkerID)
 
-	sc, err := stan.Connect(config.NatsCluster, config.WorkerID, stan.NatsConn(nc), stan.SetConnectionLostHandler(func(_ stan.Conn, reason error) {
+	sc, err := stan.Connect(config.BrokerCluster, config.WorkerID, stan.NatsConn(nc), stan.SetConnectionLostHandler(func(_ stan.Conn, reason error) {
 		log.Fatalf("Connection lost, reason: %v", reason)
 	}))
 
@@ -94,14 +94,11 @@ func (n *NatsBroker) Stop() {
 
 // PublishResult result will publish the worker result to the message queue
 func (n *NatsBroker) PublishResult(config config.Config, event event.Event) error {
-	if config.BrokerResultSubject != "" {
-
-		encodedData := event.DataEncoded
-		err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
-		if err != nil {
-			log.Println("Could not Publish result: ", string(encodedData))
-			return errors.New("Could not Publish result: " + string(encodedData))
-		}
+	encodedData := event.DataEncoded
+	err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
+	if err != nil {
+		log.Println("Could not Publish result: ", string(encodedData))
+		return errors.New("Could not Publish result: " + string(encodedData))
 	}
 	return nil
 }

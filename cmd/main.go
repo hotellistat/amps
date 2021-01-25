@@ -218,8 +218,12 @@ func main() {
 		}
 
 		if data != true {
+			if conf.Debug {
+				log.Println("Publishing recieved event to broker")
+			}
 			publishErr := broker.PublishResult(*conf, cloudevent)
 			if publishErr != nil {
+				log.Println("Could not publish event to broker")
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("Could not publish your event to the broker"))
 				// mutex.Unlock()

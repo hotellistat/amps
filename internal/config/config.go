@@ -10,8 +10,8 @@ import (
 
 // Config represents the global configuation for this project
 type Config struct {
-	NatsHost                string
-	NatsCluster             string
+	BrokerHost              string
+	BrokerCluster           string
 	WorkerID                string
 	BrokerType              string
 	BrokerSubject           string
@@ -31,8 +31,8 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		NatsHost:                getEnv("BROKER_HOST", "localhost:4223"),
-		NatsCluster:             getEnv("BROKER_CLUSTER", "nats-cluster"),
+		BrokerHost:              getEnv("BROKER_HOST", "localhost:4223"),
+		BrokerCluster:           getEnv("BROKER_CLUSTER", "nats-cluster"),
 		WorkerID:                getEnv("WORKER_ID", workerID),
 		BrokerType:              getEnv("BROKER_TYPE", "nats"),
 		BrokerSubject:           getEnvRequired("BROKER_SUBJECT"),
