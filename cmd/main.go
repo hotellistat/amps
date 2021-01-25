@@ -121,6 +121,7 @@ func messageHandler(
 
 	if err != nil {
 		log.Println("Could not Marshal Cloud Event", string(msg.Data))
+		msg.Ack()
 		log.Println(err.Error())
 		return
 	}
