@@ -8,6 +8,7 @@ import (
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
 // NatsBroker represents the primary natsshim communication instance
@@ -94,7 +95,10 @@ func (n *NatsBroker) Stop() {
 
 // PublishResult result will publish the worker result to the message queue
 func (n *NatsBroker) PublishResult(config config.Config, event event.Event) error {
-	encodedData := event.DataEncoded
+	encodedData, marshalErr := json.Marshal(event)
+	if marshalErr != nil {
+		log.Panicln("Could not marshal cloudevent while publishing")
+	}
 	err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
 	if err != nil {
 		log.Println("Could not Publish result: ", string(encodedData))
