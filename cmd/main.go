@@ -120,7 +120,8 @@ func messageHandler(
 	err := json.Unmarshal(msg.Data, &event)
 
 	if err != nil {
-		log.Println("Could not Marshal Cloud Event")
+		log.Println("Could not Marshal Cloud Event", string(msg.Data))
+		log.Println(err.Error())
 		return
 	}
 
