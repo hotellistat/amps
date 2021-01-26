@@ -114,25 +114,17 @@ func messageHandler(
 		log.Println("Job ID:", event.Context.GetID())
 	}
 
-	insertJobErr := make(chan error, 1)
+	insertErr := insertJob(msg, event, jobManifest, broker, *conf, manifestMutex)
 
-	insertJob(msg, event, jobManifest, broker, *conf, manifestMutex, insertJobErr)
-
-	insertJobErrResult := <-insertJobErr
-
-	if insertJobErrResult != nil {
-		log.Println(insertJobErrResult)
+	if insertErr != nil {
+		log.Println(insertErr.Error())
 		return
 	}
 
-	workloadErr := make(chan error, 1)
+	workloadErr := triggerWorkload(event, *conf)
 
-	triggerWorkload(event, *conf, workloadErr)
-
-	workloadErrResult := <-workloadErr
-
-	if workloadErrResult != nil {
-		log.Println(workloadErrResult)
+	if workloadErr != nil {
+		log.Println(workloadErr.Error())
 	}
 
 }
@@ -143,8 +135,7 @@ func insertJob(
 	jobManifest map[string]Job,
 	broker *BrokerShim,
 	conf config.Config,
-	manifestMutex *sync.Mutex,
-	ch chan<- error) {
+	manifestMutex *sync.Mutex) error {
 	// Mutex takes care of the before mentioned race condtition
 	(*manifestMutex).Lock()
 
@@ -153,9 +144,7 @@ func insertJob(
 	_, isDuplicate := jobManifest[eventID]
 	if isDuplicate {
 		(*manifestMutex).Unlock()
-		ch <- errors.New("Job ID: " + eventID + " this job already exists")
-		close(ch)
-		return
+		return errors.New("Job ID: " + eventID + " this job already exists")
 	}
 
 	// Create a new job and push it to the jobManifest
@@ -165,7 +154,7 @@ func insertJob(
 
 	ackErr := msg.Ack()
 	if ackErr != nil {
-		log.Println("Could not Acknowledge job:", ackErr.Error())
+		return errors.New("Could not Acknowledge job: " + ackErr.Error())
 	}
 
 	// Stop broker from recieving any more jobs after maxConcurrency is reached
@@ -177,22 +166,17 @@ func insertJob(
 	}
 
 	(*manifestMutex).Unlock()
-
-	ch <- nil
-	close(ch)
+	return nil
 }
 
 func triggerWorkload(
 	event cloudevents.Event,
-	conf config.Config,
-	ch chan<- error) {
+	conf config.Config) error {
 
 	eventData, err := json.Marshal(event)
 
 	if err != nil {
-		ch <- errors.New("Could not marshal cloudevent for workload")
-		close(ch)
-		return
+		return errors.New("Could not marshal cloudevent for workload")
 	}
 
 	client := http.Client{
@@ -205,8 +189,7 @@ func triggerWorkload(
 		log.Println("response", string(body))
 	}
 
-	ch <- nil
-	close(ch)
+	return nil
 }
 
 func jobCheckout(
