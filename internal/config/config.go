@@ -41,7 +41,7 @@ func New() *Config {
 		Debug:                   getEnvAsBool("DEBUG", false),
 		MaxConcurrency:          getEnvAsInt("MAX_CONCURRENCY", 100),
 		JobTimeout:              getEnvAsTime("JOB_TIMEOUT", "2m"),
-		WorkloadResponseTimeout: getEnvAsTime("WORKLOAD_RESPONSE_TIMEOUT", "10s"),
+		WorkloadResponseTimeout: getEnvAsTime("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
 		WorkloadAddress:         getEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
 	}
 }
