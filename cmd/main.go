@@ -2,7 +2,6 @@ package main
 
 import (
 	"batchable/internal/config"
-	"batchable/internal/kafkashim"
 	"batchable/internal/natsshim"
 	"bytes"
 	"encoding/json"
@@ -43,38 +42,37 @@ func main() {
 	conf := config.New()
 
 	brokerTypes := map[string]BrokerShim{
-		"nats":  &natsshim.NatsBroker{},
-		"kafka": &kafkashim.KafkaBroker{},
+		"nats": &natsshim.NatsBroker{},
 	}
 
 	broker, ok := brokerTypes[conf.BrokerType]
 
 	if !ok {
-		log.Fatal("Could not find broker type", conf.BrokerType)
+		log.Fatal("Could not find broker type:", conf.BrokerType)
 	}
 
-	var mutex = &sync.Mutex{}
+	var manifestMutex = &sync.Mutex{}
 
 	// Initialize our job manifest. This will hold all currently active jobs for this worker
-	jobManifest := make(map[string]Job, conf.MaxConcurrency)
+	jobManifest := make(map[string]Job)
 
-	// Initialize a new broker instance, which is a general abstraction of the NATS go library
+	// Initialize a new broker instance.
 	broker.Initialize(*conf)
 
 	// Create a new subscription for nats streaming
 	broker.Start(func(msg *stan.Msg) {
-		messageHandler(msg, conf, jobManifest, &broker, mutex)
-	})
-
-	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
-		jobCheckout(w, req, conf, jobManifest, &broker, mutex)
+		messageHandler(msg, conf, jobManifest, &broker, manifestMutex)
 	})
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {
-		go watchdog(conf, jobManifest, &broker, mutex)
+		go watchdog(conf, jobManifest, &broker, manifestMutex)
 	}
+
+	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
+	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
+		jobCheckout(w, req, conf, jobManifest, &broker, manifestMutex)
+	})
 
 	go http.ListenAndServe(":4000", nil)
 
@@ -94,83 +92,12 @@ func main() {
 
 }
 
-func insertJob(
-	event cloudevents.Event,
-	jobManifest map[string]Job,
-	broker *BrokerShim,
-	conf config.Config,
-	mutex *sync.Mutex,
-	waitgroup *sync.WaitGroup,
-	ch chan<- error) {
-	// Mutex takes care of the before mentioned race condtition
-	mutex.Lock()
-
-	eventID := event.Context.GetID()
-
-	_, isDuplicate := jobManifest[eventID]
-	if isDuplicate {
-		ch <- errors.New("Job ID: " + eventID + " this job already exists")
-		close(ch)
-		waitgroup.Done()
-		mutex.Unlock()
-		return
-	}
-
-	// Create a new job and push it to the jobManifest
-	jobManifest[eventID] = Job{
-		created: time.Now(),
-	}
-
-	// Stop broker from recieving any more jobs after maxConcurrency is reached
-	if int(len(jobManifest)) >= conf.MaxConcurrency {
-		if conf.Debug {
-			log.Println("Max job concurrency reached, stopping broker")
-		}
-		(*broker).Stop()
-	}
-
-	ch <- nil
-	close(ch)
-	waitgroup.Done()
-	mutex.Unlock()
-}
-
-func triggerWorkload(
-	event cloudevents.Event,
-	conf config.Config,
-	waitgroup *sync.WaitGroup,
-	ch chan<- error) {
-
-	eventData, err := json.Marshal(event)
-
-	if err != nil {
-		ch <- errors.New("Could not marshal cloudevent for workload")
-		close(ch)
-		waitgroup.Done()
-		return
-	}
-
-	client := http.Client{
-		Timeout: conf.WorkloadResponseTimeout,
-	}
-
-	resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(eventData))
-	if err == nil {
-		body, _ := ioutil.ReadAll(resp.Body)
-		log.Println("response", string(body))
-	}
-
-	ch <- nil
-	close(ch)
-	waitgroup.Done()
-}
-
 func messageHandler(
 	msg *stan.Msg,
 	conf *config.Config,
 	jobManifest map[string]Job,
 	broker *BrokerShim,
-	mutex *sync.Mutex) {
+	manifestMutex *sync.Mutex) {
 
 	event := cloudevents.NewEvent()
 
@@ -187,33 +114,99 @@ func messageHandler(
 		log.Println("Job ID:", event.Context.GetID())
 	}
 
-	var waitgroup sync.WaitGroup
-	waitgroup.Add(2)
+	insertJobErr := make(chan error, 1)
+
+	insertJob(msg, event, jobManifest, broker, *conf, manifestMutex, insertJobErr)
+
+	insertJobErrResult := <-insertJobErr
+
+	if insertJobErrResult != nil {
+		log.Println(insertJobErrResult)
+		return
+	}
 
 	workloadErr := make(chan error, 1)
-	go triggerWorkload(event, *conf, &waitgroup, workloadErr)
 
-	insertJobErr := make(chan error, 1)
-	go insertJob(event, jobManifest, broker, *conf, mutex, &waitgroup, insertJobErr)
+	triggerWorkload(event, *conf, workloadErr)
 
 	workloadErrResult := <-workloadErr
-	insertJobErrResult := <-insertJobErr
-	waitgroup.Wait()
 
 	if workloadErrResult != nil {
 		log.Println(workloadErrResult)
 	}
 
-	if insertJobErrResult != nil {
-		log.Println(insertJobErrResult)
+}
+
+func insertJob(
+	msg *stan.Msg,
+	event cloudevents.Event,
+	jobManifest map[string]Job,
+	broker *BrokerShim,
+	conf config.Config,
+	manifestMutex *sync.Mutex,
+	ch chan<- error) {
+	// Mutex takes care of the before mentioned race condtition
+	(*manifestMutex).Lock()
+
+	eventID := event.Context.GetID()
+
+	_, isDuplicate := jobManifest[eventID]
+	if isDuplicate {
+		(*manifestMutex).Unlock()
+		ch <- errors.New("Job ID: " + eventID + " this job already exists")
+		close(ch)
+		return
 	}
 
-	if workloadErrResult == nil && insertJobErrResult == nil {
-		msg.Ack()
-	} else {
-		log.Println("Job ID:", event.Context.GetID(), "could not be acknowledged")
-		print(insertJobErrResult.Error())
+	// Create a new job and push it to the jobManifest
+	jobManifest[eventID] = Job{
+		created: time.Now(),
 	}
+
+	ackErr := msg.Ack()
+	if ackErr != nil {
+		log.Println("Could not Acknowledge job:", ackErr.Error())
+	}
+
+	// Stop broker from recieving any more jobs after maxConcurrency is reached
+	if len(jobManifest) >= conf.MaxConcurrency {
+		if conf.Debug {
+			log.Println("Max job concurrency reached, stopping broker")
+		}
+		(*broker).Stop()
+	}
+
+	(*manifestMutex).Unlock()
+
+	ch <- nil
+	close(ch)
+}
+
+func triggerWorkload(
+	event cloudevents.Event,
+	conf config.Config,
+	ch chan<- error) {
+
+	eventData, err := json.Marshal(event)
+
+	if err != nil {
+		ch <- errors.New("Could not marshal cloudevent for workload")
+		close(ch)
+		return
+	}
+
+	client := http.Client{
+		Timeout: conf.WorkloadResponseTimeout,
+	}
+
+	resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(eventData))
+	if err == nil {
+		body, _ := ioutil.ReadAll(resp.Body)
+		log.Println("response", string(body))
+	}
+
+	ch <- nil
+	close(ch)
 }
 
 func jobCheckout(
@@ -222,7 +215,7 @@ func jobCheckout(
 	conf *config.Config,
 	jobManifest map[string]Job,
 	broker *BrokerShim,
-	mutex *sync.Mutex) {
+	manifestMutex *sync.Mutex) {
 
 	cloudevent := cloudevents.NewEvent()
 
@@ -239,6 +232,15 @@ func jobCheckout(
 	if ceErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Can not unmarshal cloudevent, make sure you send a cloudevent in structured content mode"))
+		return
+	}
+
+	eventID := cloudevent.Context.GetID()
+	_, exists := jobManifest[eventID]
+	if !exists {
+		w.WriteHeader(http.StatusNoContent)
+		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
+		log.Println("Job ID:", eventID, "does not exists anymore. Publishing blocked.")
 		return
 	}
 
@@ -262,21 +264,19 @@ func jobCheckout(
 			log.Println("Could not publish event to broker")
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Could not publish your event to the broker"))
-			// mutex.Unlock()
 			return
 		}
 	}
 
-	mutex.Lock()
-
+	(*manifestMutex).Lock()
 	delete(jobManifest, jobID)
-	if int(len(jobManifest)) < conf.MaxConcurrency {
+	if len(jobManifest) < conf.MaxConcurrency {
 		// Initialize a new subscription should the old one have been closed
 		(*broker).Start(func(msg *stan.Msg) {
-			messageHandler(msg, conf, jobManifest, broker, mutex)
+			messageHandler(msg, conf, jobManifest, broker, manifestMutex)
 		})
 	}
-	mutex.Unlock()
+	(*manifestMutex).Unlock()
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
@@ -286,11 +286,13 @@ func watchdog(
 	conf *config.Config,
 	jobManifest map[string]Job,
 	broker *BrokerShim,
-	mutex *sync.Mutex) {
+	manifestMutex *sync.Mutex) {
 	go func() {
-		for {
-			maxLifetime := conf.JobTimeout
 
+		maxLifetime := conf.JobTimeout
+
+		for {
+			(*manifestMutex).Lock()
 			for id, job := range jobManifest {
 				if time.Now().Sub(job.created) > maxLifetime {
 					if conf.Debug {
@@ -300,13 +302,14 @@ func watchdog(
 				}
 			}
 
-			if int(len(jobManifest)) < conf.MaxConcurrency {
+			if len(jobManifest) < conf.MaxConcurrency {
 				(*broker).Start(func(msg *stan.Msg) {
-					messageHandler(msg, conf, jobManifest, broker, mutex)
+					messageHandler(msg, conf, jobManifest, broker, manifestMutex)
 				})
 			}
+			(*manifestMutex).Unlock()
 
-			sleepTime, _ := time.ParseDuration("250ms")
+			sleepTime, _ := time.ParseDuration("100ms")
 			time.Sleep(sleepTime)
 		}
 	}()
