@@ -22,6 +22,7 @@ type BrokerShim interface {
 	Teardown()
 	Start(stan.MsgHandler)
 	Stop()
+	Healthy() bool
 	PublishResult(config.Config, event.Event) error
 }
 
@@ -60,6 +61,19 @@ func Run() {
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
 		JobCheckout(w, req, conf, &jobManifest, &broker)
+	})
+
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
+
+		brokerHealthy := broker.Healthy()
+
+		if brokerHealthy {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("UNHEALTHY"))
+		}
 	})
 
 	go http.ListenAndServe(":4000", nil)

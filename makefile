@@ -11,4 +11,4 @@ build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(DIST_DIR)$(BINARY_NAME) ./cmd/batchable/batchable.go
 
 test:
-	go test
+	go test -cover ./cmd/... -v --timeout 20s

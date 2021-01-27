@@ -2,9 +2,7 @@ package app
 
 import (
 	"batchable/cmd/batchable/config"
-	"encoding/json"
 
-	cloudevent "github.com/cloudevents/sdk-go/v2"
 	"github.com/nats-io/stan.go"
 )
 
@@ -15,13 +13,9 @@ func MessageHandler(
 	jobManifest *JobManifest,
 	broker *BrokerShim) {
 
-	event := cloudevent.NewEvent()
-
-	err := json.Unmarshal(msg.Data, &event)
+	event, err := UnmarshalCloudevent(msg.Data)
 
 	if err != nil {
-		println("Could not Marshal Cloud Event", string(msg.Data))
-		msg.Ack()
 		println(err.Error())
 		return
 	}
@@ -32,7 +26,7 @@ func MessageHandler(
 		println("Job ID:", eventID)
 	}
 
-	// FlagStropBroker represents a flat that is set, so that a condition outside of our lock can evaluate
+	// FlagStropBroker represents a flag that is set, so that a condition outside of our lock can evaluate
 	// if the broker should be stopped. This is important, because we want to acknowledge the message before
 	// the subscription is stopped, otherwise the broker may want to resend the message becaus a ack could not
 	// be sent on a closed connection anymore. And because we want our mutex to be as performant as possible,

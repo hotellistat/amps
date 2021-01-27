@@ -107,3 +107,16 @@ func (n *NatsBroker) PublishResult(config config.Config, event event.Event) erro
 	}
 	return nil
 }
+
+// Healthy checks the health of the broker
+func (n *NatsBroker) Healthy() bool {
+
+	natsStatus := n.natsConnection.IsConnected()
+
+	if !natsStatus {
+		return false
+	}
+	// println(natsStatus)
+
+	return true
+}

@@ -1,6 +1,12 @@
 stages:
+  - Test
   - Deploy
   - Update
+
+Test:
+  stage: Test
+  image: golang
+  script: make test
 
 Deploy:
   stage: Deploy
