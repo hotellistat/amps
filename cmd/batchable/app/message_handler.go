@@ -55,9 +55,9 @@ func MessageHandler(
 		flagStopBroker = true
 	}
 
-	msg.Ack()
-
 	jobManifest.Unlock()
+
+	msg.Ack()
 
 	if flagStopBroker {
 		(*broker).Stop()
