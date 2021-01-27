@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+type exitCallback func(code int)
+
 // Config represents the global configuation for this project
 type Config struct {
 	BrokerHost              string
@@ -31,23 +33,23 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		BrokerHost:              getEnv("BROKER_HOST", "localhost:4223"),
-		BrokerCluster:           getEnv("BROKER_CLUSTER", "nats-cluster"),
-		WorkerID:                getEnv("WORKER_ID", workerID),
-		BrokerType:              getEnv("BROKER_TYPE", "nats"),
-		BrokerSubject:           getEnvRequired("BROKER_SUBJECT"),
-		BrokerDurableGroup:      getEnv("BROKER_DURABLE_GROUP", ""),
-		BrokerQueueGroup:        getEnv("BROKER_QUEUE_GROUP", ""),
-		Debug:                   getEnvAsBool("DEBUG", false),
-		MaxConcurrency:          getEnvAsInt("MAX_CONCURRENCY", 100),
-		JobTimeout:              getEnvAsTime("JOB_TIMEOUT", "2m"),
-		WorkloadResponseTimeout: getEnvAsTime("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
-		WorkloadAddress:         getEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
+		BrokerHost:              GetEnv("BROKER_HOST", "localhost:4223"),
+		BrokerCluster:           GetEnv("BROKER_CLUSTER", "nats-cluster"),
+		WorkerID:                GetEnv("WORKER_ID", workerID),
+		BrokerType:              GetEnv("BROKER_TYPE", "nats"),
+		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
+		BrokerDurableGroup:      GetEnv("BROKER_DURABLE_GROUP", ""),
+		BrokerQueueGroup:        GetEnv("BROKER_QUEUE_GROUP", ""),
+		Debug:                   GetEnvAsBool("DEBUG", false),
+		MaxConcurrency:          GetEnvAsInt("MAX_CONCURRENCY", 100),
+		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),
+		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
+		WorkloadAddress:         GetEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
 	}
 }
 
-// Simple helper function to read an environment or return a default value
-func getEnv(key string, defaultVal string) string {
+// GetEnv is a simple helper function to read an environment or return a default value
+func GetEnv(key string, defaultVal string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
 	}
@@ -55,19 +57,20 @@ func getEnv(key string, defaultVal string) string {
 	return defaultVal
 }
 
-func getEnvRequired(key string) string {
+// GetEnvRequired thrwos an error, should a env value not be found
+func GetEnvRequired(key string, exit exitCallback) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Fatal("The environment variable: '", key, "' is required and has to be set")
-		os.Exit(1)
+		log.Println("The environment variable: '", key, "' is required and has to be set")
+		exit(1)
 	}
 
 	return value
 }
 
-// Simple helper function to read an environment variable into integer or return a default value
-func getEnvAsInt(name string, defaultVal int) int {
-	valueStr := getEnv(name, "")
+// GetEnvAsInt fetches a env as integer
+func GetEnvAsInt(name string, defaultVal int) int {
+	valueStr := GetEnv(name, "")
 	if value, err := strconv.Atoi(valueStr); err == nil {
 		return value
 	}
@@ -75,9 +78,9 @@ func getEnvAsInt(name string, defaultVal int) int {
 	return defaultVal
 }
 
-// Simple helper function to read an environment variable into integer or return a default value
-func getEnvAsTime(name string, defaultVal string) time.Duration {
-	valueStr := getEnv(name, "")
+// GetEnvAsDuration fetches a env as a time.Duration
+func GetEnvAsDuration(name string, defaultVal string) time.Duration {
+	valueStr := GetEnv(name, "")
 	if value, err := time.ParseDuration(valueStr); err == nil {
 		return value
 	}
@@ -87,9 +90,9 @@ func getEnvAsTime(name string, defaultVal string) time.Duration {
 	return defaultDuration
 }
 
-// Helper to read an environment variable into a bool or return default value
-func getEnvAsBool(name string, defaultVal bool) bool {
-	valStr := getEnv(name, "")
+// GetEnvAsBool fetches a env and parses the bool
+func GetEnvAsBool(name string, defaultVal bool) bool {
+	valStr := GetEnv(name, "")
 	if val, err := strconv.ParseBool(valStr); err == nil {
 		return val
 	}
@@ -97,9 +100,9 @@ func getEnvAsBool(name string, defaultVal bool) bool {
 	return defaultVal
 }
 
-// Helper to read an environment variable into a string slice or return default value
-func getEnvAsSlice(name string, defaultVal []string, sep string) []string {
-	valStr := getEnv(name, "")
+// GetEnvAsSlice recieves a delimited array and returns a parsed array
+func GetEnvAsSlice(name string, defaultVal []string, sep string) []string {
+	valStr := GetEnv(name, "")
 
 	if valStr == "" {
 		return defaultVal

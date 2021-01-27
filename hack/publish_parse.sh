@@ -7,10 +7,10 @@ go run ./pub.go -s nats.nats:4222 -c \
 "source":"testing",
 "data":{
   "type":"auto",
-  "identifier":"c889b139-cf35-4453-8d15-9f5480262fdf",
+  "identifier":"df0eeeec-d322-418d-89d6-04847adeb238",
   "ota_id":1,
   "hotel_id":1919,
-  "crawl_date":"2021-01-18",
+  "crawl_date":"2021-01-26",
   "length_of_stay":1,
   "max_persons":2
   }

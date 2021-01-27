@@ -1,15 +1,15 @@
-package test
+package app
 
 import (
-	"batchable/cmd/batchable/app"
 	"testing"
+	"time"
 )
 
 func TestSize(t *testing.T) {
 
 	var tmpSize int
 
-	jobManifest := app.NewJobManifest()
+	jobManifest := NewJobManifest()
 
 	tmpSize = jobManifest.Size()
 
@@ -57,7 +57,7 @@ func TestSize(t *testing.T) {
 }
 
 func TestHasJob(t *testing.T) {
-	jobManifest := app.NewJobManifest()
+	jobManifest := NewJobManifest()
 
 	isFalse := jobManifest.HasJob("1111")
 
@@ -75,7 +75,7 @@ func TestHasJob(t *testing.T) {
 }
 
 func TestInsertJob(t *testing.T) {
-	jobManifest := app.NewJobManifest()
+	jobManifest := NewJobManifest()
 
 	isFalse := jobManifest.HasJob("aaaa")
 
@@ -93,7 +93,7 @@ func TestInsertJob(t *testing.T) {
 }
 
 func TestDeleteJob(t *testing.T) {
-	jobManifest := app.NewJobManifest()
+	jobManifest := NewJobManifest()
 
 	jobManifest.InsertJob("bbbb")
 
@@ -108,6 +108,24 @@ func TestDeleteJob(t *testing.T) {
 	isFalse := jobManifest.HasJob("bbbb")
 
 	if isFalse != false {
+		t.Error()
+	}
+}
+
+func TestDeleteDeceased(t *testing.T) {
+	jobManifest := NewJobManifest()
+
+	jobManifest.InsertJob("aaaa")
+
+	time.Sleep(2 * time.Second)
+
+	jobManifest.InsertJob("bbbb")
+
+	maxLifetime, _ := time.ParseDuration("1s")
+
+	jobManifest.DeleteDeceased(maxLifetime)
+
+	if jobManifest.Size() != 1 || jobManifest.HasJob("aaaa") {
 		t.Error()
 	}
 }

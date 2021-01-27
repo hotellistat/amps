@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/joho/godotenv"
 	"github.com/nats-io/stan.go"
 )
 
@@ -28,8 +27,6 @@ type BrokerShim interface {
 
 // Run is the primary entrypoint of the batchable application
 func Run() {
-	godotenv.Load()
-
 	conf := config.New()
 
 	brokerTypes := map[string]BrokerShim{

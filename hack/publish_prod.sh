@@ -13,7 +13,7 @@ go run ./pub.go -s nats.nats:4222 -c \
   "hotel_ota_id":"de/remscheid.sk.html",
   "offset":0,
   "crawl_date":"2021-01-26",
-  "days_to_crawl":20,
+  "days_to_crawl":100,
   "length_of_stay":1,
   "max_persons":2,
   "country_code":"de",
