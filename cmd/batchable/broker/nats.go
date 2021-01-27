@@ -1,11 +1,12 @@
-package natsshim
+package broker
 
 import (
-	"batchable/internal/config"
+	"batchable/cmd/batchable/config"
 	"errors"
 	"log"
 
 	"github.com/cloudevents/sdk-go/v2/event"
+
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/stan.go"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -23,14 +24,14 @@ type NatsBroker struct {
 func (n *NatsBroker) Initialize(config config.Config) {
 	n.config = config
 
-	log.Println(config.BrokerHost, config.BrokerCluster)
+	println(config.BrokerHost, config.BrokerCluster)
 
 	nc, err := nats.Connect(config.BrokerHost)
 	if err != nil {
 		log.Fatal("Could not connect to NATS")
 	}
 
-	log.Println("Worker ID:", config.WorkerID)
+	println("Worker ID:", config.WorkerID)
 
 	sc, err := stan.Connect(config.BrokerCluster, config.WorkerID, stan.NatsConn(nc), stan.SetConnectionLostHandler(func(_ stan.Conn, reason error) {
 		log.Fatalf("Connection lost, reason: %v", reason)
@@ -101,7 +102,7 @@ func (n *NatsBroker) PublishResult(config config.Config, event event.Event) erro
 	}
 	err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
 	if err != nil {
-		log.Println("Could not Publish result: ", string(encodedData))
+		println("Could not Publish result: ", string(encodedData))
 		return errors.New("Could not Publish result: " + string(encodedData))
 	}
 	return nil
