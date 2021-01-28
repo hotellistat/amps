@@ -15,7 +15,7 @@ func UnmarshalCloudevent(data []byte) (event.Event, error) {
 	err := json.Unmarshal(data, &event)
 
 	if err != nil {
-		return cloudevent.NewEvent(), errors.New("Could not Marshal Cloud Event")
+		return cloudevent.NewEvent(), errors.New("Could not Unmarshal Cloud Event")
 	}
 
 	return event, nil

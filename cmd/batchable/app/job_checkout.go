@@ -2,7 +2,6 @@ package app
 
 import (
 	"batchable/cmd/batchable/config"
-	"encoding/json"
 	"io/ioutil"
 	"net/http"
 
@@ -28,9 +27,10 @@ func JobCheckout(
 		return
 	}
 
-	eventMarshalErr := json.Unmarshal(body, &event)
+	event, err := UnmarshalCloudevent(body)
 
-	if eventMarshalErr != nil {
+	if err != nil {
+		println(err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Can not unmarshal cloudevent, make sure you send a cloudevent in structured content mode"))
 		return
@@ -38,7 +38,7 @@ func JobCheckout(
 
 	eventID := event.Context.GetID()
 
-	if !jobManifest.HasJob(eventID) {
+	if !jobManifest.HasJob(eventID) && conf.ContainZombieJobs {
 		w.WriteHeader(http.StatusNoContent)
 		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
 		println("Job ID:", eventID, "does not exists anymore. Publishing blocked.")
@@ -48,13 +48,13 @@ func JobCheckout(
 	// Fetch the nopublish event context extension. This will prevent publishing the recieved event to our broker.
 	// This is normally used, if you want to define the end of a chain of workloads, where the last link of the chain
 	// Should not create any new events in the broker anymore
-	data, _ := event.Context.GetExtension("nopublish")
+	nopublish, _ := event.Context.GetExtension("nopublish")
 
 	if conf.Debug {
 		println("Deleting Job ID:", eventID)
 	}
 
-	if data != true {
+	if nopublish != true {
 		if conf.Debug {
 			println("Publishing recieved event to broker")
 		}
