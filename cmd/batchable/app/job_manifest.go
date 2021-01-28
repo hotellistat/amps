@@ -21,10 +21,10 @@ type JobManifest struct {
 }
 
 // NewJobManifest creates a new jobManifest with a predefined maxSize
-func NewJobManifest() JobManifest {
+func NewJobManifest(size int) JobManifest {
 	return JobManifest{
 		sync.Mutex{},
-		make(map[string]Job),
+		make(map[string]Job, size),
 	}
 }
 

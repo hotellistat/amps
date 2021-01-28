@@ -9,7 +9,7 @@ func TestSize(t *testing.T) {
 
 	var tmpSize int
 
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(10)
 
 	tmpSize = jobManifest.Size()
 
@@ -57,7 +57,7 @@ func TestSize(t *testing.T) {
 }
 
 func TestHasJob(t *testing.T) {
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(10)
 
 	isFalse := jobManifest.HasJob("1111")
 
@@ -75,7 +75,7 @@ func TestHasJob(t *testing.T) {
 }
 
 func TestInsertJob(t *testing.T) {
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(10)
 
 	isFalse := jobManifest.HasJob("aaaa")
 
@@ -93,7 +93,7 @@ func TestInsertJob(t *testing.T) {
 }
 
 func TestDeleteJob(t *testing.T) {
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(10)
 
 	jobManifest.InsertJob("bbbb")
 
@@ -113,7 +113,7 @@ func TestDeleteJob(t *testing.T) {
 }
 
 func TestDeleteDeceased(t *testing.T) {
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(10)
 
 	jobManifest.InsertJob("aaaa")
 

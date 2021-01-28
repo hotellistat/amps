@@ -43,7 +43,7 @@ func Run() {
 	var manifestMutex = &sync.Mutex{}
 
 	// Initialize our job manifest. This will hold all currently active jobs for this worker
-	jobManifest := NewJobManifest()
+	jobManifest := NewJobManifest(conf.MaxConcurrency)
 
 	// Initialize a new broker instance.
 	broker.Initialize(*conf)
