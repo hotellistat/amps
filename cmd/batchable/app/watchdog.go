@@ -22,8 +22,8 @@ func Watchdog(
 
 			jobManifest.Unlock()
 
-			if jobManifest.Size() < conf.MaxConcurrency {
-				(*broker).Start(jobManifest)
+			if jobManifest.Size() < conf.MaxConcurrency && !(*broker).Running() {
+				(*broker).Start()
 			}
 
 			sleepTime, _ := time.ParseDuration("100ms")

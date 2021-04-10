@@ -12,14 +12,13 @@ type exitCallback func(code int)
 
 // Config represents the global configuation for this project
 type Config struct {
+	BrokerUsername          string
+	BrokerPassword          string
 	BrokerHost              string
 	BrokerCluster           string
 	WorkerID                string
 	BrokerType              string
 	BrokerSubject           string
-	BrokerResultSubject     string
-	BrokerDurableGroup      string
-	BrokerQueueGroup        string
 	Debug                   bool
 	InstantAck              bool
 	ContainZombieJobs       bool
@@ -35,13 +34,13 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
+		BrokerUsername:          GetEnv("BROKER_AUTH_USERNAME", ""),
+		BrokerPassword:          GetEnv("BROKER_AUTH_PASSWORD", ""),
 		BrokerHost:              GetEnv("BROKER_HOST", "localhost:4223"),
 		BrokerCluster:           GetEnv("BROKER_CLUSTER", "nats-cluster"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		BrokerType:              GetEnv("BROKER_TYPE", "nats"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
-		BrokerDurableGroup:      GetEnv("BROKER_DURABLE_GROUP", ""),
-		BrokerQueueGroup:        GetEnv("BROKER_QUEUE_GROUP", ""),
 		Debug:                   GetEnvAsBool("DEBUG", false),
 		InstantAck:              GetEnvAsBool("INSTANT_ACK", false),
 		ContainZombieJobs:       GetEnvAsBool("CONTAIN_ZOMBIE_JOBS", false),

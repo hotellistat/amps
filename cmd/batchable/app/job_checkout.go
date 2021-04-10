@@ -60,7 +60,7 @@ func JobCheckout(
 		if conf.Debug {
 			println("Publishing recieved event to broker")
 		}
-		publishErr := (*broker).PublishResult(*conf, event)
+		publishErr := (*broker).PublishMessage(event)
 		if publishErr != nil {
 			println("Could not publish event to broker")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -69,11 +69,15 @@ func JobCheckout(
 		}
 	}
 
+	if !conf.InstantAck {
+		jobManifest.AcknowlegeJob(eventID)
+	}
+
 	jobManifest.DeleteJob(eventID)
 
 	if jobManifest.Size() < conf.MaxConcurrency {
 		// Initialize a new subscription should the old one have been closed
-		(*broker).Start(jobManifest)
+		(*broker).Start()
 	}
 
 	w.WriteHeader(http.StatusAccepted)

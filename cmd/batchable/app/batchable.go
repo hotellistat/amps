@@ -39,10 +39,14 @@ func Run() {
 	jobManifest := job.NewManifest(conf.MaxConcurrency)
 
 	// Initialize a new broker instance.
-	broker.Initialize(*conf)
+	broker.Initialize(*conf, &jobManifest)
 
 	// Create a new subscription for nats streaming
-	broker.Start(&jobManifest)
+	err := broker.Start()
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {

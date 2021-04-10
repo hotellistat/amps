@@ -17,6 +17,8 @@ import (
 
 // NatsBroker represents the primary natsshim communication instance
 type NatsBroker struct {
+	running        bool
+	jobManifest    *job.Manifest
 	config         config.Config
 	natsConnection *nats.Conn
 	stanConnection stan.Conn
@@ -24,8 +26,9 @@ type NatsBroker struct {
 }
 
 // Initialize creates a new natsshim connection
-func (n *NatsBroker) Initialize(config config.Config) {
-	n.config = config
+func (broker *NatsBroker) Initialize(config config.Config, jobManifest *job.Manifest) {
+	broker.config = config
+	broker.jobManifest = jobManifest
 
 	println(config.BrokerHost, config.BrokerCluster)
 
@@ -45,33 +48,35 @@ func (n *NatsBroker) Initialize(config config.Config) {
 		log.Fatal(err)
 	}
 
-	n.natsConnection = nc
-	n.stanConnection = sc
+	broker.natsConnection = nc
+	broker.stanConnection = sc
+}
+
+func (broker *NatsBroker) Running() bool {
+	return broker.running
 }
 
 // Teardown the natsshim connection and all natsshim services
-func (n *NatsBroker) Teardown() {
-	if n.subscription != nil {
-		n.subscription.Close()
+func (broker *NatsBroker) Teardown() {
+	if broker.subscription != nil {
+		broker.subscription.Close()
 	}
-	n.subscription = nil
+	broker.subscription = nil
 
-	if n.stanConnection != nil {
-		n.stanConnection.Close()
+	if broker.stanConnection != nil {
+		broker.stanConnection.Close()
 	}
-	n.stanConnection = nil
+	broker.stanConnection = nil
 
-	if n.natsConnection != nil {
-		n.natsConnection.Close()
+	if broker.natsConnection != nil {
+		broker.natsConnection.Close()
 	}
-	n.natsConnection = nil
+	broker.natsConnection = nil
 }
 
 // messageHandler will execute on every new borker message
 func (broker *NatsBroker) messageHandler(
-	msg *stan.Msg,
-	conf *config.Config,
-	jobManifest *job.Manifest) {
+	msg *stan.Msg) {
 
 	event, err := cloudevent.Unmarshal(msg.Data)
 
@@ -82,7 +87,7 @@ func (broker *NatsBroker) messageHandler(
 
 	eventID := event.Context.GetID()
 
-	if conf.Debug {
+	if broker.config.Debug {
 		println("Job ID:", eventID)
 	}
 
@@ -93,29 +98,33 @@ func (broker *NatsBroker) messageHandler(
 	// we want to execute the Acknowledgement outside of the mutext since the ack is blocking/sychronous.
 	flagStopBroker := false
 
-	jobManifest.Lock()
+	broker.jobManifest.Lock()
 
-	insertErr := jobManifest.InsertJob(eventID, msg)
+	insertErr := broker.jobManifest.InsertJob(eventID, msg)
 
 	if insertErr != nil {
 		println(insertErr.Error())
 		return
 	}
 
-	if jobManifest.Size() >= conf.MaxConcurrency {
-		if conf.Debug {
+	if broker.jobManifest.Size() >= broker.config.MaxConcurrency {
+		if broker.config.Debug {
 			println("Max job concurrency reached, stopping broker")
 		}
 		flagStopBroker = true
 	}
 
-	jobManifest.Unlock()
+	broker.jobManifest.Unlock()
+
+	if broker.config.InstantAck {
+		msg.Ack()
+	}
 
 	if flagStopBroker {
 		(*broker).Stop()
 	}
 
-	workloadErr := workload.Trigger(event, *conf)
+	workloadErr := workload.Trigger(event, broker.config)
 
 	if workloadErr != nil {
 		println(workloadErr.Error())
@@ -123,44 +132,43 @@ func (broker *NatsBroker) messageHandler(
 }
 
 // Start creates a new subscription and executes the messageCallback on new messages
-func (n *NatsBroker) Start(jobManifest *job.Manifest) {
-	if n.subscription != nil {
-		return
+func (broker *NatsBroker) Start() error {
+	if broker.subscription != nil {
+		return errors.New("queue subscription without broker connection not possible")
 	}
 
-	sub, err := n.stanConnection.QueueSubscribe(
-		n.config.BrokerSubject,
-		n.config.BrokerQueueGroup,
-		func(msg *stan.Msg) {
-			n.messageHandler(msg, &n.config, jobManifest)
-		},
-		stan.DurableName(n.config.BrokerDurableGroup),
+	sub, err := broker.stanConnection.QueueSubscribe(
+		broker.config.BrokerSubject,
+		broker.config.BrokerSubject,
+		broker.messageHandler,
+		stan.DurableName(broker.config.BrokerSubject),
 		stan.SetManualAckMode(),
-		stan.AckWait(config.New().WorkloadResponseTimeout),
+		stan.AckWait(broker.config.JobTimeout),
 	)
-
-	_ = sub
 
 	if err != nil {
 		log.Fatal("Could not subscribe to subject")
 	}
 
-	n.subscription = sub
+	broker.subscription = sub
+	broker.running = true
+	return nil
 }
 
 // Stop closes the natsshim subscription so no new messages will be recieved
-func (n *NatsBroker) Stop() {
-	n.subscription.Close()
-	n.subscription = nil
+func (broker *NatsBroker) Stop() {
+	broker.subscription.Close()
+	broker.subscription = nil
+	broker.running = false
 }
 
 // PublishResult result will publish the worker result to the message queue
-func (n *NatsBroker) PublishResult(config config.Config, event event.Event) error {
+func (broker *NatsBroker) PublishMessage(event event.Event) error {
 	encodedData, marshalErr := json.Marshal(event)
 	if marshalErr != nil {
 		log.Panicln("Could not marshal cloudevent while publishing")
 	}
-	err := n.stanConnection.Publish(event.Context.GetType(), encodedData)
+	err := broker.stanConnection.Publish(event.Context.GetType(), encodedData)
 	if err != nil {
 		println("Could not Publish result: ", string(encodedData))
 		return errors.New("Could not Publish result: " + string(encodedData))
@@ -169,9 +177,9 @@ func (n *NatsBroker) PublishResult(config config.Config, event event.Event) erro
 }
 
 // Healthy checks the health of the broker
-func (n *NatsBroker) Healthy() bool {
+func (broker *NatsBroker) Healthy() bool {
 
-	natsStatus := n.natsConnection.IsConnected()
+	natsStatus := broker.natsConnection.IsConnected()
 
 	return !natsStatus
 }

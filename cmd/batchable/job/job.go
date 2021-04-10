@@ -68,6 +68,18 @@ func (jm *Manifest) DeleteJob(ID string) error {
 	return nil
 }
 
+// DeleteJob removes a job if it exists, otherwise throws an error
+func (jm *Manifest) AcknowlegeJob(ID string) error {
+
+	if !jm.HasJob(ID) {
+		return errors.New("A Job with the ID: " + ID + " does not exist")
+	}
+
+	job := jm.jobs[ID]
+
+	return job.message.Ack()
+}
+
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
 func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
 
