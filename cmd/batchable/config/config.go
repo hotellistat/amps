@@ -21,6 +21,7 @@ type Config struct {
 	BrokerDurableGroup      string
 	BrokerQueueGroup        string
 	Debug                   bool
+	InstantAck              bool
 	ContainZombieJobs       bool
 	JobTimeout              time.Duration
 	MaxConcurrency          int
@@ -42,6 +43,7 @@ func New() *Config {
 		BrokerDurableGroup:      GetEnv("BROKER_DURABLE_GROUP", ""),
 		BrokerQueueGroup:        GetEnv("BROKER_QUEUE_GROUP", ""),
 		Debug:                   GetEnvAsBool("DEBUG", false),
+		InstantAck:              GetEnvAsBool("INSTANT_ACK", false),
 		ContainZombieJobs:       GetEnvAsBool("CONTAIN_ZOMBIE_JOBS", false),
 		MaxConcurrency:          GetEnvAsInt("MAX_CONCURRENCY", 100),
 		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),

@@ -1,50 +1,48 @@
-package app
+package job
 
 import (
 	"errors"
 	"sync"
 	"time"
-
-	"github.com/nats-io/stan.go"
 )
+
+type Message interface {
+	Ack() error
+}
 
 // Job represents a job item
 type Job struct {
 	created time.Time
-	message *stan.Msg
+	message Message
 }
 
-// JobManifest represents the collection of current jobs
-type JobManifest struct {
+// Manifest represents the collection of current jobs
+type Manifest struct {
 	mutex sync.Mutex
 	jobs  map[string]Job
 }
 
-// NewJobManifest creates a new jobManifest with a predefined maxSize
-func NewJobManifest(size int) JobManifest {
-	return JobManifest{
+// NewManifest creates a new Manifest with a predefined maxSize
+func NewManifest(size int) Manifest {
+	return Manifest{
 		sync.Mutex{},
 		make(map[string]Job, size),
 	}
 }
 
 // Size returns the current job manifest size
-func (jm *JobManifest) Size() int {
+func (jm *Manifest) Size() int {
 	return len(jm.jobs)
 }
 
 // HasJob checks if a job with a given ID already exists
-func (jm *JobManifest) HasJob(ID string) bool {
+func (jm *Manifest) HasJob(ID string) bool {
 	_, exists := jm.jobs[ID]
-	if exists {
-		return true
-	}
-
-	return false
+	return exists
 }
 
 // InsertJob inserts a new job and checks that there are no duplicates
-func (jm *JobManifest) InsertJob(ID string) error {
+func (jm *Manifest) InsertJob(ID string, message Message) error {
 
 	if jm.HasJob(ID) {
 		return errors.New("A Job with the ID: " + ID + " already exists")
@@ -52,16 +50,17 @@ func (jm *JobManifest) InsertJob(ID string) error {
 
 	jm.jobs[ID] = Job{
 		created: time.Now(),
+		message: message,
 	}
 
 	return nil
 }
 
 // DeleteJob removes a job if it exists, otherwise throws an error
-func (jm *JobManifest) DeleteJob(ID string) error {
+func (jm *Manifest) DeleteJob(ID string) error {
 
 	if !jm.HasJob(ID) {
-		return errors.New("A Job with the ID: " + ID + " already exists")
+		return errors.New("A Job with the ID: " + ID + " does not exist")
 	}
 
 	delete(jm.jobs, ID)
@@ -70,10 +69,10 @@ func (jm *JobManifest) DeleteJob(ID string) error {
 }
 
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
-func (jm *JobManifest) DeleteDeceased(maxLifetime time.Duration) error {
+func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
 
 	for ID, jobItem := range jm.jobs {
-		if time.Now().Sub(jobItem.created) > maxLifetime {
+		if time.Since(jobItem.created) > maxLifetime {
 			println("Job ID:", ID, "timed out")
 			jm.DeleteJob(ID)
 		}
@@ -83,11 +82,11 @@ func (jm *JobManifest) DeleteDeceased(maxLifetime time.Duration) error {
 }
 
 // Lock locks the job manifest mutex
-func (jm *JobManifest) Lock() {
+func (jm *Manifest) Lock() {
 	jm.mutex.Lock()
 }
 
 // Unlock unlocks the job manifest mutex
-func (jm *JobManifest) Unlock() {
+func (jm *Manifest) Unlock() {
 	jm.mutex.Unlock()
 }

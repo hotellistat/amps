@@ -1,4 +1,4 @@
-package app
+package workload
 
 import (
 	"batchable/cmd/batchable/config"
@@ -12,14 +12,14 @@ import (
 )
 
 // TriggerWorkload sends a HTTP request to the sibling workload on every new broker job
-func TriggerWorkload(
+func Trigger(
 	event event.Event,
 	conf config.Config) error {
 
 	eventData, err := json.Marshal(event)
 
 	if err != nil {
-		return errors.New("Could not marshal cloudevent for workload")
+		return errors.New("could not marshal cloudevent for workload")
 	}
 
 	client := http.Client{

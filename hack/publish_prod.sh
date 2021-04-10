@@ -1,4 +1,4 @@
-go run ./pub.go -s nats.nats:4222 -c \
+go run ./pub.go -s nats.messaging:4222 -c \
 "nats" \
 "com.hotellistat.scraping" \
 '{"specversion":"1.0",
@@ -8,12 +8,12 @@ go run ./pub.go -s nats.nats:4222 -c \
 "data":{
   "type":"auto",
   "identifier":"'"$(uuidgen)"'",
-  "ota_id":1,
-  "hotel_id":1919,
-  "hotel_ota_id":"de/remscheid.sk.html",
+  "ota_id":5,
+  "hotel_id":17,
+  "hotel_ota_id":"391295",
   "offset":0,
-  "crawl_date":"2021-01-26",
-  "days_to_crawl":100,
+  "crawl_date":"2021-05-01",
+  "days_to_crawl":2,
   "length_of_stay":1,
   "max_persons":2,
   "country_code":"de",

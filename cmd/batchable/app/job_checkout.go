@@ -1,12 +1,14 @@
 package app
 
 import (
+	"batchable/cmd/batchable/broker"
+	"batchable/cmd/batchable/cloudevent"
 	"batchable/cmd/batchable/config"
+	"batchable/cmd/batchable/job"
 	"io/ioutil"
 	"net/http"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/nats-io/stan.go"
 )
 
 // JobCheckout is executed when a workload finishes a job, and registers it as completed
@@ -14,8 +16,8 @@ func JobCheckout(
 	w http.ResponseWriter,
 	req *http.Request,
 	conf *config.Config,
-	jobManifest *JobManifest,
-	broker *BrokerShim) {
+	jobManifest *job.Manifest,
+	broker *broker.Shim) {
 
 	event := cloudevents.NewEvent()
 
@@ -27,7 +29,7 @@ func JobCheckout(
 		return
 	}
 
-	event, err := UnmarshalCloudevent(body)
+	event, err := cloudevent.Unmarshal(body)
 
 	if err != nil {
 		println(err.Error())
@@ -71,9 +73,7 @@ func JobCheckout(
 
 	if jobManifest.Size() < conf.MaxConcurrency {
 		// Initialize a new subscription should the old one have been closed
-		(*broker).Start(func(msg *stan.Msg) {
-			MessageHandler(msg, conf, jobManifest, broker)
-		})
+		(*broker).Start(jobManifest)
 	}
 
 	w.WriteHeader(http.StatusAccepted)

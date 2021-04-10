@@ -3,35 +3,28 @@ package app
 import (
 	"batchable/cmd/batchable/broker"
 	"batchable/cmd/batchable/config"
+	"batchable/cmd/batchable/job"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
-
-	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/nats-io/stan.go"
 )
 
 // A Job represents one current workitem that needs to be processed
 
 // BrokerShim is an abstracion of the functions that each broker shim needs to implement
-type BrokerShim interface {
-	Initialize(config.Config)
-	Teardown()
-	Start(stan.MsgHandler)
-	Stop()
-	Healthy() bool
-	PublishResult(config.Config, event.Event) error
-}
 
 // Run is the primary entrypoint of the batchable application
 func Run() {
 	conf := config.New()
 
-	brokerTypes := map[string]BrokerShim{
+	printBanner(*conf)
+
+	brokerTypes := map[string]broker.Shim{
 		"nats": &broker.NatsBroker{},
+		"amqp": &broker.AMQPBroker{},
 	}
 
 	broker, ok := brokerTypes[conf.BrokerType]
@@ -43,15 +36,13 @@ func Run() {
 	var manifestMutex = &sync.Mutex{}
 
 	// Initialize our job manifest. This will hold all currently active jobs for this worker
-	jobManifest := NewJobManifest(conf.MaxConcurrency)
+	jobManifest := job.NewManifest(conf.MaxConcurrency)
 
 	// Initialize a new broker instance.
 	broker.Initialize(*conf)
 
 	// Create a new subscription for nats streaming
-	broker.Start(func(msg *stan.Msg) {
-		MessageHandler(msg, conf, &jobManifest, &broker)
-	})
+	broker.Start(&jobManifest)
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {

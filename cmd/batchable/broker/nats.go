@@ -1,7 +1,10 @@
 package broker
 
 import (
+	"batchable/cmd/batchable/cloudevent"
 	"batchable/cmd/batchable/config"
+	"batchable/cmd/batchable/job"
+	"batchable/cmd/batchable/workload"
 	"errors"
 	"log"
 
@@ -64,8 +67,63 @@ func (n *NatsBroker) Teardown() {
 	n.natsConnection = nil
 }
 
+// messageHandler will execute on every new borker message
+func (broker *NatsBroker) messageHandler(
+	msg *stan.Msg,
+	conf *config.Config,
+	jobManifest *job.Manifest) {
+
+	event, err := cloudevent.Unmarshal(msg.Data)
+
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	eventID := event.Context.GetID()
+
+	if conf.Debug {
+		println("Job ID:", eventID)
+	}
+
+	// FlagStropBroker represents a flag that is set, so that a condition outside of our lock can evaluate
+	// if the broker should be stopped. This is important, because we want to acknowledge the message before
+	// the subscription is stopped, otherwise the broker may want to resend the message becaus a ack could not
+	// be sent on a closed connection anymore. And because we want our mutex to be as performant as possible,
+	// we want to execute the Acknowledgement outside of the mutext since the ack is blocking/sychronous.
+	flagStopBroker := false
+
+	jobManifest.Lock()
+
+	insertErr := jobManifest.InsertJob(eventID, msg)
+
+	if insertErr != nil {
+		println(insertErr.Error())
+		return
+	}
+
+	if jobManifest.Size() >= conf.MaxConcurrency {
+		if conf.Debug {
+			println("Max job concurrency reached, stopping broker")
+		}
+		flagStopBroker = true
+	}
+
+	jobManifest.Unlock()
+
+	if flagStopBroker {
+		(*broker).Stop()
+	}
+
+	workloadErr := workload.Trigger(event, *conf)
+
+	if workloadErr != nil {
+		println(workloadErr.Error())
+	}
+}
+
 // Start creates a new subscription and executes the messageCallback on new messages
-func (n *NatsBroker) Start(messageCallback stan.MsgHandler) {
+func (n *NatsBroker) Start(jobManifest *job.Manifest) {
 	if n.subscription != nil {
 		return
 	}
@@ -73,7 +131,9 @@ func (n *NatsBroker) Start(messageCallback stan.MsgHandler) {
 	sub, err := n.stanConnection.QueueSubscribe(
 		n.config.BrokerSubject,
 		n.config.BrokerQueueGroup,
-		messageCallback,
+		func(msg *stan.Msg) {
+			n.messageHandler(msg, &n.config, jobManifest)
+		},
 		stan.DurableName(n.config.BrokerDurableGroup),
 		stan.SetManualAckMode(),
 		stan.AckWait(config.New().WorkloadResponseTimeout),
@@ -113,10 +173,5 @@ func (n *NatsBroker) Healthy() bool {
 
 	natsStatus := n.natsConnection.IsConnected()
 
-	if !natsStatus {
-		return false
-	}
-	// println(natsStatus)
-
-	return true
+	return !natsStatus
 }

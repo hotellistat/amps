@@ -1,4 +1,4 @@
-package app
+package cloudevent
 
 import (
 	"encoding/json"
@@ -9,13 +9,13 @@ import (
 )
 
 // UnmarshalCloudevent parses a cloudevent
-func UnmarshalCloudevent(data []byte) (event.Event, error) {
+func Unmarshal(data []byte) (event.Event, error) {
 	event := cloudevent.NewEvent()
 
 	err := json.Unmarshal(data, &event)
 
 	if err != nil {
-		return cloudevent.NewEvent(), errors.New("Could not Unmarshal Cloud Event")
+		return cloudevent.NewEvent(), errors.New("could not Unmarshal Cloud Event")
 	}
 
 	return event, nil

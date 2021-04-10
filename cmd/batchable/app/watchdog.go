@@ -1,18 +1,18 @@
 package app
 
 import (
+	"batchable/cmd/batchable/broker"
 	"batchable/cmd/batchable/config"
+	"batchable/cmd/batchable/job"
 	"sync"
 	"time"
-
-	"github.com/nats-io/stan.go"
 )
 
 // Watchdog is a goroutine that takes care of job timeouts and general state management
 func Watchdog(
 	conf *config.Config,
-	jobManifest *JobManifest,
-	broker *BrokerShim,
+	jobManifest *job.Manifest,
+	broker *broker.Shim,
 	manifestMutex *sync.Mutex) {
 	go func() {
 		for {
@@ -23,9 +23,7 @@ func Watchdog(
 			jobManifest.Unlock()
 
 			if jobManifest.Size() < conf.MaxConcurrency {
-				(*broker).Start(func(msg *stan.Msg) {
-					MessageHandler(msg, conf, jobManifest, broker)
-				})
+				(*broker).Start(jobManifest)
 			}
 
 			sleepTime, _ := time.ParseDuration("100ms")
