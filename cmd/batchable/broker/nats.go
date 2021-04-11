@@ -75,8 +75,7 @@ func (broker *NatsBroker) Teardown() {
 }
 
 // messageHandler will execute on every new borker message
-func (broker *NatsBroker) messageHandler(
-	msg *stan.Msg) {
+func (broker *NatsBroker) messageHandler(msg *stan.Msg) {
 
 	event, err := cloudevent.Unmarshal(msg.Data)
 

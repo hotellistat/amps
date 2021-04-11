@@ -1,13 +1,16 @@
 package broker
 
 import (
+	"batchable/cmd/batchable/cloudevent"
 	"batchable/cmd/batchable/config"
 	"batchable/cmd/batchable/job"
+	"batchable/cmd/batchable/workload"
+	"errors"
 	"log"
-	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/streadway/amqp"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
 // AMQPBroker represents the primary natsshim communication instance
@@ -66,6 +69,73 @@ func (broker *AMQPBroker) Running() bool {
 	return broker.running
 }
 
+type MessageWrapper struct {
+	message amqp.Delivery
+}
+
+func (messageWrapper MessageWrapper) Ack() error {
+	return messageWrapper.message.Ack(false)
+}
+
+func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
+
+	event, err := cloudevent.Unmarshal(msg.Body)
+
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	eventID := event.Context.GetID()
+
+	if broker.config.Debug {
+		println("Job ID:", eventID)
+	}
+
+	// FlagStropBroker represents a flag that is set, so that a condition outside of our lock can evaluate
+	// if the broker should be stopped. This is important, because we want to acknowledge the message before
+	// the subscription is stopped, otherwise the broker may want to resend the message becaus a ack could not
+	// be sent on a closed connection anymore. And because we want our mutex to be as performant as possible,
+	// we want to execute the Acknowledgement outside of the mutext since the ack is blocking/sychronous.
+	flagStopBroker := false
+
+	broker.jobManifest.Lock()
+
+	messageWrapper := MessageWrapper{
+		msg,
+	}
+
+	insertErr := broker.jobManifest.InsertJob(eventID, messageWrapper)
+
+	if insertErr != nil {
+		println(insertErr.Error())
+		return
+	}
+
+	if broker.jobManifest.Size() >= broker.config.MaxConcurrency {
+		if broker.config.Debug {
+			println("Max job concurrency reached, stopping broker")
+		}
+		flagStopBroker = true
+	}
+
+	broker.jobManifest.Unlock()
+
+	if broker.config.InstantAck {
+		msg.Ack(false)
+	}
+
+	if flagStopBroker {
+		(*broker).Stop()
+	}
+
+	workloadErr := workload.Trigger(event, broker.config)
+
+	if workloadErr != nil {
+		println(workloadErr.Error())
+	}
+}
+
 // Start creates a new subscription and executes the messageCallback on new messages
 func (broker *AMQPBroker) Start() error {
 	messages, err := broker.channel.Consume(
@@ -86,11 +156,7 @@ func (broker *AMQPBroker) Start() error {
 
 	go func() {
 		for d := range messages {
-			log.Printf("Received a message: %s", d.Body)
-			dur, _ := time.ParseDuration("2s")
-			time.Sleep(dur)
-			log.Printf("Done")
-			d.Ack(false)
+			broker.messageHandler(d)
 		}
 	}()
 
@@ -106,6 +172,25 @@ func (broker *AMQPBroker) Stop() {
 // PublishResult result will publish the worker result to the message queue
 func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 
+	encodedData, marshalErr := json.Marshal(event)
+	if marshalErr != nil {
+		log.Panicln("Could not marshal cloudevent while publishing")
+	}
+
+	err := broker.channel.Publish(
+		"",
+		broker.queue.Name,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        encodedData,
+		})
+
+	if err != nil {
+		println("Could not Publish result: ", string(encodedData))
+		return errors.New("Could not Publish result: " + string(encodedData))
+	}
 	return nil
 }
 
