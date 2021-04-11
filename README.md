@@ -2,22 +2,22 @@
 
 ## Prolog
 
-Batchable arose from our necessety to dynamically scale asynchronos worker queue jobs,
-and enabling those worker to work on several jobs in the same container in parallel.
+Batchable arose from our necessity to dynamically scale asynchronous worker queue jobs
+and enabling those workers to work on several jobs in the same container in parallel.
 
 Batchable represents a sidecar container that subscribes to a queue such as NATS and consumes
-message from that queue, until the max concurrency limit is met. Upon recieving a message, Batchable
-will send a HTTP request to the workload container, which will acknowledge that it has recieved the job.
+messages from that queue, until the max concurrency limit is met. Upon receiving a message, Batchable
+will send a HTTP request to the workload container, which will acknowledge that it has received the job.
 The workload can then asynchronously work on that message within the workload timeout.
 Upon successful completion of the workload, it will send a `checkout` HTTP request back to the Batchable
 sidecar container to finalize the Job completion.
 
 Since Batchable holds an internal state of which job is currently worked on, it knows how to handle and how to timeout
-concurrently runnig jobs.
+concurrently running jobs.
 
 Batchable is supposed to do one job well, and one job only. Other solutions such as OpenFaaS tried to support more and more features
-as they progresed, resulting in loads of complexity and inefficiencies.
-Batchable is supposed be as configurable as possible to adapt to your needs.
+as they progressed, resulting in loads of complexity and inefficiencies.
+Batchable is supposed to be as configurable as possible to adapt to your needs.
 
 ### Why use HTTP for your workload?
 
@@ -28,15 +28,15 @@ choice for this kind of application.
 
 ### Job message structure
 
-Batchable is built, such that it always exprects a CloudEvent formatted message body. The specversion is currently set to `1.0.0`
+Batchable is built, such that it always expects a CloudEvent formatted message body. The specversion is currently set to `1.0.0`
 and all queue messages should be formatted accordingly.
 
-Batchable also conveys this CloudEvent to the Wokload by the **structured content mode**.
+Batchable also conveys this CloudEvent to the Workload by the **structured content mode**.
 This means, that it will pack the whole CloudEvent into a JSON and pass it to the workload with the `Content-Type: application/json` header.
 
 ### Kubernetes
 
-This container is primarily designed to work in a kubernetes environment. We can't ensure, that this container will work with other
+This container is primarily designed to work in a Kubernetes environment. We can't ensure, that this container will work with other
 systems such as OpenStack, ECS, etc.
 
 ### Scalability
@@ -44,7 +44,7 @@ systems such as OpenStack, ECS, etc.
 Batchable does not support scaling up and down _at the moment_. To scale Batchable-Workload Pods you will need to choose your own
 scaling solution. We have had great success with using [KEDA](https://keda.sh/).
 
-Scaling always depends on your specific needs, thus building our own scaling solution for Batchable wouldn't cover all usecases,
+Scaling always depends on your specific needs, thus building our own scaling solution for Batchable wouldn't cover all use cases,
 thus restricting the application usability.
 
 ## Getting started
@@ -117,13 +117,13 @@ spec:
             - containerPort: 80
 ```
 
-This `yaml` schema can of course also be converted into any other k8s object that wrapps a Pod template.
+This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod template.
 
 ## Development
 
 Developing Batchable is a simple as it gets. Follow these steps:
 
-1. Copy the `.env.template` file and renamte it to `.env`
+1. Copy the `.env.template` file and rename it to `.env`
 2. Launch a local NATS server
 3. Configure the environment variables in the `.env` for your system
 4. Run `make dev`
