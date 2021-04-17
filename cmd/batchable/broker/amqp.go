@@ -69,21 +69,24 @@ func (broker *AMQPBroker) Running() bool {
 	return broker.running
 }
 
-type MessageWrapper struct {
+type AmqpMessageWrapper struct {
 	message amqp.Delivery
 }
 
-func (messageWrapper MessageWrapper) Ack() error {
+func (messageWrapper AmqpMessageWrapper) Ack() error {
 	return messageWrapper.message.Ack(false)
 }
 
-func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
+func (messageWrapper AmqpMessageWrapper) Reject() error {
+	return messageWrapper.message.Reject(true)
+}
+
+func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 	event, err := cloudevent.Unmarshal(msg.Body)
 
 	if err != nil {
-		println(err.Error())
-		return
+		return err
 	}
 
 	eventID := event.Context.GetID()
@@ -101,15 +104,14 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
 
 	broker.jobManifest.Lock()
 
-	messageWrapper := MessageWrapper{
+	messageWrapper := AmqpMessageWrapper{
 		msg,
 	}
 
 	insertErr := broker.jobManifest.InsertJob(eventID, messageWrapper)
 
 	if insertErr != nil {
-		println(insertErr.Error())
-		return
+		return insertErr
 	}
 
 	if broker.jobManifest.Size() >= broker.config.MaxConcurrency {
@@ -133,7 +135,12 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
 
 	if workloadErr != nil {
 		println(workloadErr.Error())
+		println("Rejecting job for rescheduling")
+		broker.jobManifest.DeleteJob(eventID)
+		msg.Reject(true)
 	}
+
+	return nil
 }
 
 // Start creates a new subscription and executes the messageCallback on new messages
@@ -156,7 +163,10 @@ func (broker *AMQPBroker) Start() error {
 
 	go func() {
 		for d := range messages {
-			broker.messageHandler(d)
+			err := broker.messageHandler(d)
+			if err != nil {
+				log.Println(err.Error())
+			}
 		}
 	}()
 
