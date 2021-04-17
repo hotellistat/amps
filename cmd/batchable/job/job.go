@@ -8,6 +8,7 @@ import (
 
 type Message interface {
 	Ack() error
+	Reject() error
 }
 
 // Job represents a job item

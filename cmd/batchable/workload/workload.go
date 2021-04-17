@@ -28,12 +28,11 @@ func Trigger(
 
 	resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(eventData))
 	if err != nil {
-		println(err.Error())
+		return err
 	}
-	if err == nil {
-		body, _ := ioutil.ReadAll(resp.Body)
-		println("response", string(body))
-	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	println("response", string(body))
 
 	return nil
 }
