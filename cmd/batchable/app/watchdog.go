@@ -16,15 +16,15 @@ func Watchdog(
 	manifestMutex *sync.Mutex) {
 	go func() {
 		for {
-			jobManifest.Lock()
+			// jobManifest.Lock()
 
 			jobManifest.DeleteDeceased(conf.JobTimeout)
 
-			jobManifest.Unlock()
+			// jobManifest.Unlock()
 
-			if jobManifest.Size() < conf.MaxConcurrency && !(*broker).Running() {
-				(*broker).Start()
-			}
+			// if jobManifest.Size() < conf.MaxConcurrency && !(*broker).Running() {
+			// 	(*broker).Start()
+			// }
 
 			sleepTime, _ := time.ParseDuration("100ms")
 			time.Sleep(sleepTime)

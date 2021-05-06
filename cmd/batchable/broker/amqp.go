@@ -20,7 +20,6 @@ type AMQPBroker struct {
 	config      config.Config
 	connection  *amqp.Connection
 	channel     *amqp.Channel
-	queue       *amqp.Queue
 }
 
 // Initialize creates a new natsshim connection
@@ -44,14 +43,14 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 	broker.connection = conn
 
-	ch, err := conn.Channel()
+	ch, err := broker.connection.Channel()
 	if err != nil {
 		log.Fatal("Could not connect to AMQP server")
 	}
 
-	queue, _ := ch.QueueDeclare(broker.config.BrokerSubject, true, false, false, false, nil)
+	ch.Qos(broker.config.MaxConcurrency, 0, false)
 
-	broker.queue = &queue
+	ch.QueueDeclare(broker.config.BrokerSubject, true, false, false, false, nil)
 
 	broker.channel = ch
 
@@ -69,21 +68,24 @@ func (broker *AMQPBroker) Running() bool {
 	return broker.running
 }
 
-type MessageWrapper struct {
+type AmqpMessageWrapper struct {
 	message amqp.Delivery
 }
 
-func (messageWrapper MessageWrapper) Ack() error {
+func (messageWrapper AmqpMessageWrapper) Ack() error {
 	return messageWrapper.message.Ack(false)
 }
 
-func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
+func (messageWrapper AmqpMessageWrapper) Reject() error {
+	return messageWrapper.message.Nack(false, true)
+}
+
+func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 	event, err := cloudevent.Unmarshal(msg.Body)
 
 	if err != nil {
-		println(err.Error())
-		return
+		return err
 	}
 
 	eventID := event.Context.GetID()
@@ -92,56 +94,38 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) {
 		println("Job ID:", eventID)
 	}
 
-	// FlagStropBroker represents a flag that is set, so that a condition outside of our lock can evaluate
-	// if the broker should be stopped. This is important, because we want to acknowledge the message before
-	// the subscription is stopped, otherwise the broker may want to resend the message becaus a ack could not
-	// be sent on a closed connection anymore. And because we want our mutex to be as performant as possible,
-	// we want to execute the Acknowledgement outside of the mutext since the ack is blocking/sychronous.
-	flagStopBroker := false
-
-	broker.jobManifest.Lock()
-
-	messageWrapper := MessageWrapper{
+	messageWrapper := AmqpMessageWrapper{
 		msg,
 	}
 
 	insertErr := broker.jobManifest.InsertJob(eventID, messageWrapper)
 
 	if insertErr != nil {
-		println(insertErr.Error())
-		return
-	}
-
-	if broker.jobManifest.Size() >= broker.config.MaxConcurrency {
-		if broker.config.Debug {
-			println("Max job concurrency reached, stopping broker")
-		}
-		flagStopBroker = true
-	}
-
-	broker.jobManifest.Unlock()
-
-	if broker.config.InstantAck {
-		msg.Ack(false)
-	}
-
-	if flagStopBroker {
-		(*broker).Stop()
+		return insertErr
 	}
 
 	workloadErr := workload.Trigger(event, broker.config)
 
 	if workloadErr != nil {
 		println(workloadErr.Error())
+		println("Rejecting job for rescheduling")
+		broker.jobManifest.DeleteJob(eventID)
+		msg.Nack(false, true)
 	}
+
+	return nil
 }
 
 // Start creates a new subscription and executes the messageCallback on new messages
 func (broker *AMQPBroker) Start() error {
+	if broker.running {
+		return errors.New("broker is already running")
+	}
+
 	messages, err := broker.channel.Consume(
 		broker.config.BrokerSubject,
 		broker.config.WorkerID,
-		false,
+		broker.config.InstantAck,
 		false,
 		false,
 		false,
@@ -149,24 +133,26 @@ func (broker *AMQPBroker) Start() error {
 	)
 
 	if err != nil {
-		log.Fatal("Could not consume", err.Error())
+		log.Println("Could not consume", err.Error())
+		return err
 	}
 
 	broker.running = true
 
 	go func() {
 		for d := range messages {
-			broker.messageHandler(d)
+			err := broker.messageHandler(d)
+			if err != nil {
+				log.Println(err.Error())
+			}
 		}
 	}()
 
 	return nil
 }
 
-// Stop closes the natsshim subscription so no new messages will be recieved
-func (broker *AMQPBroker) Stop() {
-	broker.channel.Cancel(broker.config.WorkerID, false)
-	broker.running = false
+func (broker *AMQPBroker) Stop() error {
+	return nil
 }
 
 // PublishResult result will publish the worker result to the message queue
@@ -179,7 +165,7 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 
 	err := broker.channel.Publish(
 		"",
-		broker.queue.Name,
+		event.Context.GetType(),
 		false,
 		false,
 		amqp.Publishing{
@@ -188,7 +174,7 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 		})
 
 	if err != nil {
-		println("Could not Publish result: ", string(encodedData))
+		println("Could not Publish result", err.Error())
 		return errors.New("Could not Publish result: " + string(encodedData))
 	}
 	return nil

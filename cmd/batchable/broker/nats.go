@@ -74,6 +74,18 @@ func (broker *NatsBroker) Teardown() {
 	broker.natsConnection = nil
 }
 
+type NatsMessageWrapper struct {
+	message *stan.Msg
+}
+
+func (messageWrapper NatsMessageWrapper) Ack() error {
+	return messageWrapper.message.Ack()
+}
+
+func (messageWrapper NatsMessageWrapper) Reject() error {
+	return nil
+}
+
 // messageHandler will execute on every new borker message
 func (broker *NatsBroker) messageHandler(msg *stan.Msg) {
 
@@ -99,7 +111,11 @@ func (broker *NatsBroker) messageHandler(msg *stan.Msg) {
 
 	broker.jobManifest.Lock()
 
-	insertErr := broker.jobManifest.InsertJob(eventID, msg)
+	messageWrapper := NatsMessageWrapper{
+		msg,
+	}
+
+	insertErr := broker.jobManifest.InsertJob(eventID, messageWrapper)
 
 	if insertErr != nil {
 		println(insertErr.Error())
@@ -155,10 +171,11 @@ func (broker *NatsBroker) Start() error {
 }
 
 // Stop closes the natsshim subscription so no new messages will be recieved
-func (broker *NatsBroker) Stop() {
+func (broker *NatsBroker) Stop() error {
 	broker.subscription.Close()
 	broker.subscription = nil
 	broker.running = false
+	return nil
 }
 
 // PublishResult result will publish the worker result to the message queue
