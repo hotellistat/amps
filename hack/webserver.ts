@@ -26,7 +26,7 @@ for await (const req of s) {
       console.log(e);
 
     }
-  }, 3000)
+  }, 30000)
 
 
 }
