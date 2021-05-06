@@ -15,6 +15,11 @@ func (n *FakeMessage) Ack() error {
 	return nil
 }
 
+func (n *FakeMessage) Reject() error {
+	log.Println("REJECT")
+	return nil
+}
+
 func TestSize(t *testing.T) {
 
 	fakeMessage := &FakeMessage{

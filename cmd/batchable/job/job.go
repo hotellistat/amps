@@ -8,6 +8,7 @@ import (
 
 type Message interface {
 	Ack() error
+	Reject() error
 }
 
 // Job represents a job item
@@ -80,12 +81,25 @@ func (jm *Manifest) AcknowlegeJob(ID string) error {
 	return job.message.Ack()
 }
 
+// DeleteJob removes a job if it exists, otherwise throws an error
+func (jm *Manifest) RejectJob(ID string) error {
+
+	if !jm.HasJob(ID) {
+		return errors.New("A Job with the ID: " + ID + " does not exist")
+	}
+
+	job := jm.jobs[ID]
+
+	return job.message.Reject()
+}
+
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
 func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
 
 	for ID, jobItem := range jm.jobs {
 		if time.Since(jobItem.created) > maxLifetime {
 			println("Job ID:", ID, "timed out")
+			jm.RejectJob(ID)
 			jm.DeleteJob(ID)
 		}
 	}

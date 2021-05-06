@@ -21,7 +21,7 @@ type Config struct {
 	BrokerSubject           string
 	Debug                   bool
 	InstantAck              bool
-	ContainZombieJobs       bool
+	RejectZombieJobs        bool
 	JobTimeout              time.Duration
 	MaxConcurrency          int
 	WorkloadAddress         string
@@ -36,14 +36,14 @@ func New() *Config {
 	return &Config{
 		BrokerUsername:          GetEnv("BROKER_AUTH_USERNAME", ""),
 		BrokerPassword:          GetEnv("BROKER_AUTH_PASSWORD", ""),
-		BrokerHost:              GetEnv("BROKER_HOST", "localhost:4223"),
+		BrokerHost:              GetEnv("BROKER_HOST", "localhost"),
 		BrokerCluster:           GetEnv("BROKER_CLUSTER", "nats-cluster"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		BrokerType:              GetEnv("BROKER_TYPE", "nats"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
 		Debug:                   GetEnvAsBool("DEBUG", false),
 		InstantAck:              GetEnvAsBool("INSTANT_ACK", false),
-		ContainZombieJobs:       GetEnvAsBool("CONTAIN_ZOMBIE_JOBS", false),
+		RejectZombieJobs:        GetEnvAsBool("REJECT_ZOMBIE_JOBS", true),
 		MaxConcurrency:          GetEnvAsInt("MAX_CONCURRENCY", 100),
 		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),
 		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),

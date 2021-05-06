@@ -40,7 +40,7 @@ func JobCheckout(
 
 	eventID := event.Context.GetID()
 
-	if !jobManifest.HasJob(eventID) && conf.ContainZombieJobs {
+	if !jobManifest.HasJob(eventID) && conf.RejectZombieJobs {
 		w.WriteHeader(http.StatusNoContent)
 		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
 		println("Job ID:", eventID, "does not exists anymore. Publishing blocked.")
@@ -62,7 +62,7 @@ func JobCheckout(
 		}
 		publishErr := (*broker).PublishMessage(event)
 		if publishErr != nil {
-			println("Could not publish event to broker")
+			println("Could not publish event to broker", publishErr.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Could not publish your event to the broker"))
 			return
@@ -75,7 +75,7 @@ func JobCheckout(
 
 	jobManifest.DeleteJob(eventID)
 
-	if jobManifest.Size() < conf.MaxConcurrency {
+	if jobManifest.Size() < conf.MaxConcurrency && !(*broker).Running() {
 		// Initialize a new subscription should the old one have been closed
 		(*broker).Start()
 	}
