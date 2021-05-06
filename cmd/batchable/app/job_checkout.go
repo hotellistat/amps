@@ -40,7 +40,7 @@ func JobCheckout(
 
 	eventID := event.Context.GetID()
 
-	if !jobManifest.HasJob(eventID) && conf.ContainZombieJobs {
+	if !jobManifest.HasJob(eventID) && conf.RejectZombieJobs {
 		w.WriteHeader(http.StatusNoContent)
 		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
 		println("Job ID:", eventID, "does not exists anymore. Publishing blocked.")

@@ -9,7 +9,7 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 
 
-for i in range(40):
+for i in range(1):
     message = {
         "specversion": "1.0",
         "type": "com.hotellistat.scraping",
@@ -32,6 +32,7 @@ for i in range(40):
         }
     }
     channel.basic_publish(exchange='',
+
                       routing_key='com.hotellistat.scraping',
                       body=json.dumps(message))
 

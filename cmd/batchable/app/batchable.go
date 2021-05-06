@@ -12,10 +12,6 @@ import (
 	"sync"
 )
 
-// A Job represents one current workitem that needs to be processed
-
-// BrokerShim is an abstracion of the functions that each broker shim needs to implement
-
 // Run is the primary entrypoint of the batchable application
 func Run() {
 	conf := config.New()
@@ -55,6 +51,12 @@ func Run() {
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
+
+		if req.Method != "POST" {
+			fmt.Fprintf(w, "Only POST is allowed")
+			return
+		}
+
 		JobCheckout(w, req, conf, &jobManifest, &broker)
 	})
 
