@@ -50,7 +50,16 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 	ch.Qos(broker.config.MaxConcurrency, 0, false)
 
-	ch.QueueDeclare(broker.config.BrokerSubject, true, false, false, false, nil)
+	ch.QueueDeclare(
+		broker.config.BrokerSubject,
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			"message-ttl": int32(broker.config.JobTimeout.Milliseconds()),
+		},
+	)
 
 	broker.channel = ch
 
