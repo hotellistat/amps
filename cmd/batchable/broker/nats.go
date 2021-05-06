@@ -171,10 +171,11 @@ func (broker *NatsBroker) Start() error {
 }
 
 // Stop closes the natsshim subscription so no new messages will be recieved
-func (broker *NatsBroker) Stop() {
+func (broker *NatsBroker) Stop() error {
 	broker.subscription.Close()
 	broker.subscription = nil
 	broker.running = false
+	return nil
 }
 
 // PublishResult result will publish the worker result to the message queue

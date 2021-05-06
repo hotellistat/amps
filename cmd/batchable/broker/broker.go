@@ -22,7 +22,7 @@ type Shim interface {
 	Running() bool
 
 	// Stop message recieving, while still keeping open fundamental connections to external resources
-	Stop()
+	Stop() error
 
 	// Healthcheck to verify that the broker is not stuck. This will restart the container if it fails and healthchecks are set up correctly
 	Healthy() bool
