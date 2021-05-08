@@ -9,15 +9,15 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 
 
-for i in range(1):
+for i in range(100000):
     message = {
         "specversion": "1.0",
-        "type": "com.hotellistat.scraping",
+        "type": "com.hotellistat.scraping-result",
         "id": str(uuid.uuid4()),
         "source": "testing",
+        "nopublish": True,
         "data": {
             "type": "auto",
-            "identifier": str(uuid.uuid4()),
             "ota_id": 1,
             "hotel_id": 17,
             "hotel_ota_id": "de/rocco-forte-the-charles.de.html",

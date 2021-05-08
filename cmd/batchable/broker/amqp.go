@@ -7,6 +7,7 @@ import (
 	"batchable/cmd/batchable/workload"
 	"errors"
 	"log"
+	"sync"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/streadway/amqp"
@@ -15,11 +16,14 @@ import (
 
 // AMQPBroker represents the primary natsshim communication instance
 type AMQPBroker struct {
-	running     bool
-	jobManifest *job.Manifest
-	config      config.Config
-	connection  *amqp.Connection
-	channel     *amqp.Channel
+	running                     bool
+	jobManifest                 *job.Manifest
+	config                      config.Config
+	connection                  *amqp.Connection
+	channel                     *amqp.Channel
+	mutex                       sync.Mutex
+	messages                    *<-chan amqp.Delivery
+	messageHandleRoutineStarted bool
 }
 
 // Initialize creates a new natsshim connection
@@ -44,11 +48,12 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	broker.connection = conn
 
 	ch, err := broker.connection.Channel()
+
 	if err != nil {
 		log.Fatal("Could not connect to AMQP server")
 	}
 
-	ch.Qos(broker.config.MaxConcurrency, 0, false)
+	ch.Qos(1, 0, false)
 
 	ch.QueueDeclare(
 		broker.config.BrokerSubject,
@@ -56,19 +61,17 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 		false,
 		false,
 		false,
-		amqp.Table{
-			"message-ttl": int32(broker.config.JobTimeout.Milliseconds()),
-		},
+		nil,
 	)
 
 	broker.channel = ch
 
-	println("Initialized AMQP connection")
+	println("[batchable] Initialized AMQP connection")
 }
 
 // Teardown the natsshim connection and all natsshim services
 func (broker *AMQPBroker) Teardown() {
-	println("Tearing down broker")
+	println("[batchable] Tearing down broker")
 	broker.channel.Cancel(broker.config.WorkerID, false)
 	broker.connection.Close()
 }
@@ -79,10 +82,6 @@ func (broker *AMQPBroker) Running() bool {
 
 type AmqpMessageWrapper struct {
 	message amqp.Delivery
-}
-
-func (messageWrapper AmqpMessageWrapper) Ack() error {
-	return messageWrapper.message.Ack(false)
 }
 
 func (messageWrapper AmqpMessageWrapper) Reject() error {
@@ -100,26 +99,41 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	eventID := event.Context.GetID()
 
 	if broker.config.Debug {
-		println("Job ID:", eventID)
+		println("[batchable] Job ID:", eventID)
 	}
 
-	messageWrapper := AmqpMessageWrapper{
-		msg,
-	}
+	broker.jobManifest.Mutex.Lock()
+	defer broker.jobManifest.Mutex.Unlock()
 
-	insertErr := broker.jobManifest.InsertJob(eventID, messageWrapper)
+	insertErr := broker.jobManifest.InsertJob(
+		eventID,
+		AmqpMessageWrapper{
+			msg,
+		},
+	)
 
 	if insertErr != nil {
 		return insertErr
 	}
 
+	if broker.jobManifest.Size() >= broker.config.MaxConcurrency {
+		if broker.config.Debug {
+			println("[batchable] Max job concurrency reached, stopping broker")
+		}
+		(*broker).Stop()
+	}
+
 	workloadErr := workload.Trigger(event, broker.config)
 
 	if workloadErr != nil {
-		println(workloadErr.Error())
-		println("Rejecting job for rescheduling")
+		println("[batchable]", workloadErr.Error())
+		println("[batchable] Rejecting job for rescheduling")
+
 		broker.jobManifest.DeleteJob(eventID)
+
 		msg.Nack(false, true)
+	} else {
+		msg.Ack(false)
 	}
 
 	return nil
@@ -127,6 +141,9 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 // Start creates a new subscription and executes the messageCallback on new messages
 func (broker *AMQPBroker) Start() error {
+	broker.mutex.Lock()
+	defer broker.mutex.Unlock()
+
 	if broker.running {
 		return errors.New("broker is already running")
 	}
@@ -134,7 +151,7 @@ func (broker *AMQPBroker) Start() error {
 	messages, err := broker.channel.Consume(
 		broker.config.BrokerSubject,
 		broker.config.WorkerID,
-		broker.config.InstantAck,
+		false,
 		false,
 		false,
 		false,
@@ -142,7 +159,7 @@ func (broker *AMQPBroker) Start() error {
 	)
 
 	if err != nil {
-		log.Println("Could not consume", err.Error())
+		log.Println("[batchable] Could not start consumer", err.Error())
 		return err
 	}
 
@@ -150,10 +167,7 @@ func (broker *AMQPBroker) Start() error {
 
 	go func() {
 		for d := range messages {
-			err := broker.messageHandler(d)
-			if err != nil {
-				log.Println(err.Error())
-			}
+			go broker.messageHandler(d)
 		}
 	}()
 
@@ -161,12 +175,27 @@ func (broker *AMQPBroker) Start() error {
 }
 
 func (broker *AMQPBroker) Stop() error {
+	broker.mutex.Lock()
+	defer broker.mutex.Unlock()
+
+	if !broker.running {
+		return errors.New("broker is already stopped")
+	}
+
+	err := broker.channel.Cancel(broker.config.WorkerID, false)
+
+	if err != nil {
+		log.Println("[batchable] Could not cancel consumer", err.Error())
+		return err
+	}
+
+	broker.running = false
+
 	return nil
 }
 
 // PublishResult result will publish the worker result to the message queue
 func (broker *AMQPBroker) PublishMessage(event event.Event) error {
-
 	encodedData, marshalErr := json.Marshal(event)
 	if marshalErr != nil {
 		log.Panicln("Could not marshal cloudevent while publishing")
@@ -183,7 +212,7 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 		})
 
 	if err != nil {
-		println("Could not Publish result", err.Error())
+		println("[batchable] Could not Publish result", err.Error())
 		return errors.New("Could not Publish result: " + string(encodedData))
 	}
 	return nil
@@ -191,6 +220,5 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 
 // Healthy checks the health of the broker
 func (broker *AMQPBroker) Healthy() bool {
-
 	return true
 }

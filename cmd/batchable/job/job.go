@@ -7,7 +7,6 @@ import (
 )
 
 type Message interface {
-	Ack() error
 	Reject() error
 }
 
@@ -19,7 +18,7 @@ type Job struct {
 
 // Manifest represents the collection of current jobs
 type Manifest struct {
-	mutex sync.Mutex
+	Mutex sync.Mutex
 	jobs  map[string]Job
 }
 
@@ -44,7 +43,6 @@ func (jm *Manifest) HasJob(ID string) bool {
 
 // InsertJob inserts a new job and checks that there are no duplicates
 func (jm *Manifest) InsertJob(ID string, message Message) error {
-
 	if jm.HasJob(ID) {
 		return errors.New("A Job with the ID: " + ID + " already exists")
 	}
@@ -64,21 +62,11 @@ func (jm *Manifest) DeleteJob(ID string) error {
 		return errors.New("A Job with the ID: " + ID + " does not exist")
 	}
 
+	println("[batchable] Deleting Job ID:", ID)
+
 	delete(jm.jobs, ID)
 
 	return nil
-}
-
-// DeleteJob removes a job if it exists, otherwise throws an error
-func (jm *Manifest) AcknowlegeJob(ID string) error {
-
-	if !jm.HasJob(ID) {
-		return errors.New("A Job with the ID: " + ID + " does not exist")
-	}
-
-	job := jm.jobs[ID]
-
-	return job.message.Ack()
 }
 
 // DeleteJob removes a job if it exists, otherwise throws an error
@@ -95,12 +83,18 @@ func (jm *Manifest) RejectJob(ID string) error {
 
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
 func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
-
 	for ID, jobItem := range jm.jobs {
 		if time.Since(jobItem.created) > maxLifetime {
-			println("Job ID:", ID, "timed out")
-			jm.RejectJob(ID)
-			jm.DeleteJob(ID)
+			println("[batchable] Job ID:", ID, "timed out")
+
+			job, exists := jm.jobs[ID]
+			if !exists {
+				continue
+			}
+
+			job.message.Reject()
+
+			delete(jm.jobs, ID)
 		}
 	}
 
@@ -108,11 +102,11 @@ func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
 }
 
 // Lock locks the job manifest mutex
-func (jm *Manifest) Lock() {
-	jm.mutex.Lock()
-}
+// func (jm *Manifest) Lock() {
+// 	jm.mutex.Lock()
+// }
 
-// Unlock unlocks the job manifest mutex
-func (jm *Manifest) Unlock() {
-	jm.mutex.Unlock()
-}
+// // Unlock unlocks the job manifest mutex
+// func (jm *Manifest) Unlock() {
+// 	jm.mutex.Unlock()
+// }

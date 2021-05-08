@@ -32,7 +32,7 @@ func Trigger(
 	}
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	println("response", string(body))
+	println("[batchable] response", string(body))
 
 	return nil
 }
