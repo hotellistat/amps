@@ -14,21 +14,18 @@ func Watchdog(
 	jobManifest *job.Manifest,
 	broker *broker.Shim,
 	manifestMutex *sync.Mutex) {
+	tickInterval, _ := time.ParseDuration("1000ms")
+	ticker := time.NewTicker(tickInterval)
 	go func() {
-		for {
-
+		for range ticker.C {
 			jobManifest.Mutex.Lock()
-
 			jobManifest.DeleteDeceased(conf.JobTimeout)
-
-			if jobManifest.Size() < conf.MaxConcurrency {
-				(*broker).Start()
-			}
-
+			startBroker := jobManifest.Size() < conf.MaxConcurrency
 			jobManifest.Mutex.Unlock()
 
-			sleepTime, _ := time.ParseDuration("100ms")
-			time.Sleep(sleepTime)
+			if startBroker {
+				(*broker).Start()
+			}
 		}
 	}()
 }
