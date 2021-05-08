@@ -64,7 +64,7 @@ func GetEnv(key string, defaultVal string) string {
 func GetEnvRequired(key string, exit exitCallback) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Println("The environment variable: '", key, "' is required and has to be set")
+		log.Println("[batchable] The environment variable: '", key, "' is required and has to be set")
 		exit(1)
 	}
 

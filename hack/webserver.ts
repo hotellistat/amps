@@ -18,15 +18,11 @@ for await (const req of s) {
 
   setTimeout(async () => {
     try {
-
-      console.log("runing");
-
-      await fetch("http://localhost:4000/checkout", { method: "POST", body: JSON.stringify(body) })
+      await fetch("http://localhost:4000/complete", { method: "POST", body: JSON.stringify(body) })
     } catch (e) {
       console.log(e);
-
     }
-  }, 30000)
+  }, (Math.random() * 20))
 
 
 }

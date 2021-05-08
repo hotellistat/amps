@@ -19,7 +19,6 @@ func Run() {
 	printBanner(*conf)
 
 	brokerTypes := map[string]broker.Shim{
-		"nats": &broker.NatsBroker{},
 		"amqp": &broker.AMQPBroker{},
 	}
 
@@ -50,14 +49,14 @@ func Run() {
 	}
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-	http.HandleFunc("/checkout", func(w http.ResponseWriter, req *http.Request) {
+	http.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
 
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
 
-		JobCheckout(w, req, conf, &jobManifest, &broker)
+		JobComplete(w, req, conf, &jobManifest, &broker)
 	})
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {

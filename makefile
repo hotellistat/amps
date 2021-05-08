@@ -5,7 +5,7 @@ DIST_DIR=./dist/
 
 
 dev:
-	go run ./cmd/batchable/batchable.go
+	go run -race ./cmd/batchable/batchable.go
 
 server:
 	deno run --watch --allow-net --unstable hack/webserver.ts
