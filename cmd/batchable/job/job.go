@@ -7,7 +7,6 @@ import (
 )
 
 type Message interface {
-	Reject() error
 }
 
 // Job represents a job item
@@ -18,14 +17,14 @@ type Job struct {
 
 // Manifest represents the collection of current jobs
 type Manifest struct {
-	Mutex sync.Mutex
+	Mutex *sync.Mutex
 	jobs  map[string]Job
 }
 
 // NewManifest creates a new Manifest with a predefined maxSize
 func NewManifest(size int) Manifest {
 	return Manifest{
-		sync.Mutex{},
+		&sync.Mutex{},
 		make(map[string]Job, size),
 	}
 }
@@ -69,44 +68,14 @@ func (jm *Manifest) DeleteJob(ID string) error {
 	return nil
 }
 
-// DeleteJob removes a job if it exists, otherwise throws an error
-func (jm *Manifest) RejectJob(ID string) error {
-
-	if !jm.HasJob(ID) {
-		return errors.New("A Job with the ID: " + ID + " does not exist")
-	}
-
-	job := jm.jobs[ID]
-
-	return job.message.Reject()
-}
-
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
 func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
 	for ID, jobItem := range jm.jobs {
 		if time.Since(jobItem.created) > maxLifetime {
 			println("[batchable] Job ID:", ID, "timed out")
-
-			job, exists := jm.jobs[ID]
-			if !exists {
-				continue
-			}
-
-			job.message.Reject()
-
-			delete(jm.jobs, ID)
+			jm.DeleteJob(ID)
 		}
 	}
 
 	return nil
 }
-
-// Lock locks the job manifest mutex
-// func (jm *Manifest) Lock() {
-// 	jm.mutex.Lock()
-// }
-
-// // Unlock unlocks the job manifest mutex
-// func (jm *Manifest) Unlock() {
-// 	jm.mutex.Unlock()
-// }

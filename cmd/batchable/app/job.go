@@ -42,23 +42,29 @@ func JobComplete(
 
 	jobManifest.Mutex.Lock()
 
-	if !jobManifest.HasJob(eventID) && conf.RejectZombieJobs {
-		w.WriteHeader(http.StatusNoContent)
+	if !jobManifest.HasJob(eventID) {
+		jobManifest.Mutex.Unlock()
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
 		println("[batchable] Job ID:", eventID, "does not exists anymore. Publishing blocked.")
 		return
 	}
 
-	// Fetch the nopublish event context extension. This will prevent publishing the recieved event to our broker.
-	// This is normally used, if you want to define the end of a chain of workloads, where the last link of the chain
-	// Should not create any new events in the broker anymore
+	// Fetch the nopublish event context extension. This will prevent publishing
+	// the recieved event to our broker. This is normally used,
+	// if you want to define the end of a chain of workloads where the last
+	// link of the chain should not create any new events in the broker anymore
 	nopublish, _ := event.Context.GetExtension("nopublish")
 
 	jobManifest.DeleteJob(eventID)
 
-	(*broker).Start()
+	startBroker := jobManifest.Size() < conf.MaxConcurrency
 
 	jobManifest.Mutex.Unlock()
+
+	if startBroker {
+		(*broker).Start()
+	}
 
 	if nopublish != true {
 		if conf.Debug {

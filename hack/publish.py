@@ -5,11 +5,15 @@ import time
 
 
 connection = pika.BlockingConnection(
-    pika.ConnectionParameters('localhost', 5672))
+    pika.ConnectionParameters(
+        'localhost',
+        5672,
+        # credentials=pika.PlainCredentials("main", "OGQXDO2I39")
+        ))
 channel = connection.channel()
 
 
-for i in range(100000):
+for i in range(50000):
     message = {
         "specversion": "1.0",
         "type": "com.hotellistat.scraping-result",
@@ -31,10 +35,11 @@ for i in range(100000):
             "closures": []
         }
     }
-    channel.basic_publish(exchange='',
-
-                      routing_key='com.hotellistat.scraping',
-                      body=json.dumps(message))
+    channel.basic_publish(
+        exchange='',
+        routing_key='com.hotellistat.scraping',
+        body=json.dumps(message)
+    )
 
 
 connection.close()
