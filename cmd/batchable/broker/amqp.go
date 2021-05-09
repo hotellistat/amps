@@ -16,12 +16,13 @@ import (
 
 // AMQPBroker represents the primary natsshim communication instance
 type AMQPBroker struct {
-	running     bool
-	jobManifest *job.Manifest
-	config      config.Config
-	connection  *amqp.Connection
-	channel     *amqp.Channel
-	mutex       *sync.Mutex
+	running        bool
+	jobManifest    *job.Manifest
+	config         config.Config
+	connection     *amqp.Connection
+	consumeChannel *amqp.Channel
+	publishChannel *amqp.Channel
+	mutex          *sync.Mutex
 }
 
 // Initialize creates a new natsshim connection
@@ -46,15 +47,15 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 	broker.connection = conn
 
-	ch, err := broker.connection.Channel()
+	consumeChannel, consumeErr := broker.connection.Channel()
 
-	if err != nil {
-		log.Fatal("Could not connect to AMQP server")
+	if consumeErr != nil {
+		log.Fatal("Could not create consumer channel")
 	}
 
-	ch.Qos(1, 0, false)
+	consumeChannel.Qos(1, 0, false)
 
-	ch.QueueDeclare(
+	consumeChannel.QueueDeclare(
 		broker.config.BrokerSubject,
 		true,
 		false,
@@ -63,7 +64,15 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 		nil,
 	)
 
-	broker.channel = ch
+	broker.consumeChannel = consumeChannel
+
+	publishChannel, publishErr := broker.connection.Channel()
+
+	if publishErr != nil {
+		log.Fatal("Could not create publisher channel")
+	}
+
+	broker.publishChannel = publishChannel
 
 	println("[batchable] Initialized AMQP connection")
 }
@@ -71,7 +80,7 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 // Teardown the natsshim connection and all natsshim services
 func (broker *AMQPBroker) Teardown() {
 	println("[batchable] Tearing down broker")
-	broker.channel.Cancel(broker.config.WorkerID, false)
+	broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 	broker.connection.Close()
 }
 
@@ -160,7 +169,7 @@ func (broker *AMQPBroker) Start() error {
 		return errors.New("broker is already running")
 	}
 
-	messages, err := broker.channel.Consume(
+	messages, err := broker.consumeChannel.Consume(
 		broker.config.BrokerSubject,
 		broker.config.WorkerID,
 		false,
@@ -197,7 +206,7 @@ func (broker *AMQPBroker) Stop() error {
 		return errors.New("broker is already stopped")
 	}
 
-	err := broker.channel.Cancel(broker.config.WorkerID, false)
+	err := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 
 	if err != nil {
 		log.Println("[batchable] Could not cancel consumer", err.Error())
@@ -216,7 +225,7 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 		log.Panicln("Could not marshal cloudevent while publishing")
 	}
 
-	err := broker.channel.Publish(
+	err := broker.publishChannel.Publish(
 		"",
 		event.Context.GetType(),
 		false,
