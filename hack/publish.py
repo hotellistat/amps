@@ -13,13 +13,13 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 
 
-for i in range(50000):
+for i in range(100):
     message = {
         "specversion": "1.0",
-        "type": "com.hotellistat.scraping-result",
+        "type": "com.hotellistat.scraping",
         "id": str(uuid.uuid4()),
         "source": "testing",
-        "nopublish": True,
+        # "nopublish": True,
         "data": {
             "type": "auto",
             "ota_id": 1,

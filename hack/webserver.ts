@@ -7,7 +7,7 @@ for await (const req of s) {
   const body = JSON.parse(new TextDecoder().decode(await Deno.readAll(req.body)))
   // console.log(body);
 
-  body.type = "com.hotellistat.test_exit"
+  // body.type = "com.hotellistat.scraping"
 
   counter = counter + 1
   console.log("Count:", counter);
