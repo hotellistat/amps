@@ -5,6 +5,7 @@ import (
 	"batchable/cmd/batchable/cloudevent"
 	"batchable/cmd/batchable/config"
 	"batchable/cmd/batchable/job"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 
@@ -77,6 +78,55 @@ func JobComplete(
 			w.Write([]byte("Could not publish your event to the broker"))
 			return
 		}
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("OK"))
+}
+
+type JobDeleteSchema struct {
+	Identifier string
+}
+
+func JobDelete(
+	w http.ResponseWriter,
+	req *http.Request,
+	conf *config.Config,
+	jobManifest *job.Manifest,
+	broker *broker.Shim) {
+
+	var job JobDeleteSchema
+
+	err := json.NewDecoder(req.Body).Decode(&job)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	jobManifest.Mutex.Lock()
+
+	if !jobManifest.HasJob(job.Identifier) {
+		jobManifest.Mutex.Unlock()
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
+		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
+		return
+	}
+
+	// Fetch the nopublish event context extension. This will prevent publishing
+	// the recieved event to our broker. This is normally used,
+	// if you want to define the end of a chain of workloads where the last
+	// link of the chain should not create any new events in the broker anymore
+
+	jobManifest.DeleteJob(job.Identifier)
+
+	startBroker := jobManifest.Size() < conf.MaxConcurrency
+
+	jobManifest.Mutex.Unlock()
+
+	if startBroker {
+		(*broker).Start()
 	}
 
 	w.WriteHeader(http.StatusAccepted)

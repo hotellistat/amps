@@ -59,6 +59,17 @@ func Run() {
 		JobComplete(w, req, conf, &jobManifest, &broker)
 	})
 
+	// This endpoint handles job deletion
+	http.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
+
+		if req.Method != "POST" {
+			fmt.Fprintf(w, "Only POST is allowed")
+			return
+		}
+
+		JobDelete(w, req, conf, &jobManifest, &broker)
+	})
+
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 
 		brokerHealthy := broker.Healthy()
