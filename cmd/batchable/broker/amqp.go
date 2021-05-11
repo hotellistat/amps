@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/streadway/amqp"
@@ -16,13 +17,79 @@ import (
 
 // AMQPBroker represents the primary natsshim communication instance
 type AMQPBroker struct {
-	running        bool
-	jobManifest    *job.Manifest
-	config         config.Config
-	connection     *amqp.Connection
-	consumeChannel *amqp.Channel
-	publishChannel *amqp.Channel
-	mutex          *sync.Mutex
+	running             bool
+	jobManifest         *job.Manifest
+	config              config.Config
+	connection          *amqp.Connection
+	connectionCloseChan chan *amqp.Error
+	consumeChannel      *amqp.Channel
+	publishChannel      *amqp.Channel
+	mutex               *sync.Mutex
+}
+
+// This functions retries a server connections infinitely, until it managed
+// to establish a connection to the server.
+func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
+	for {
+		conn, err := amqp.Dial(uri)
+
+		if err == nil {
+			return conn
+		}
+
+		log.Println(err.Error())
+		log.Printf("Trying to reconnect to RabbitMQ at %s\n", uri)
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// This routinge will always run in the background as a groutine and will
+// initiate a reconnect as soon as a new event gets pushed into the
+// connecitonCloseChan channel
+func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
+	// Loop through each element in the channel (will be run upon new cahnel event)
+	for range broker.connectionCloseChan {
+		println("[batchable] Connecting to", uri)
+		broker.connection = broker.AmqpConnect(uri)
+		println("[batchable] Initialized AMQP connection")
+
+		// Register a NotifyClose on the connectionCloseChan channel, such that
+		// a broker connection will trigger a reconnect by running a new iteration
+		// of the current for loop
+		broker.connection.NotifyClose(broker.connectionCloseChan)
+
+		consumeChannel, consumeErr := broker.connection.Channel()
+
+		if consumeErr != nil {
+			log.Fatal("Could not create consumer channel")
+		}
+
+		consumeChannel.Qos(1, 0, false)
+
+		consumeChannel.QueueDeclare(
+			broker.config.BrokerSubject,
+			true,
+			false,
+			false,
+			false,
+			nil,
+		)
+
+		broker.consumeChannel = consumeChannel
+
+		publishChannel, publishErr := broker.connection.Channel()
+
+		if publishErr != nil {
+			log.Fatal("Could not create publisher channel")
+		}
+
+		broker.publishChannel = publishChannel
+
+		broker.Start()
+		// // Set waitgroup to done, such that the initial connection phase stops blocking
+		// // further code execution
+		connected <- true
+	}
 }
 
 // Initialize creates a new natsshim connection
@@ -39,42 +106,21 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 	uri := "amqp://" + auth + config.BrokerHost + "/"
 
-	conn, err := amqp.Dial(uri)
+	// Create a new connectionCloseChan
+	broker.connectionCloseChan = make(chan *amqp.Error)
 
-	if err != nil {
-		log.Fatal("Could not connect to AMQP server")
+	connectedChan := make(chan bool, 1)
+
+	go broker.AmqpConnectRoutine(uri, connectedChan)
+
+	// Send initial ErrClosed event into connectionCloseChan cahnnel, such that
+	// the AmqpConnectRoutine goroutine triggers a initial connect to the server
+	broker.connectionCloseChan <- amqp.ErrClosed
+
+	// connectionWaitGroup.Wait()
+	for range connectedChan {
+		break
 	}
-
-	broker.connection = conn
-
-	consumeChannel, consumeErr := broker.connection.Channel()
-
-	if consumeErr != nil {
-		log.Fatal("Could not create consumer channel")
-	}
-
-	consumeChannel.Qos(1, 0, false)
-
-	consumeChannel.QueueDeclare(
-		broker.config.BrokerSubject,
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-
-	broker.consumeChannel = consumeChannel
-
-	publishChannel, publishErr := broker.connection.Channel()
-
-	if publishErr != nil {
-		log.Fatal("Could not create publisher channel")
-	}
-
-	broker.publishChannel = publishChannel
-
-	println("[batchable] Initialized AMQP connection")
 }
 
 // Teardown the natsshim connection and all natsshim services
