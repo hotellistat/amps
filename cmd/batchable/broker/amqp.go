@@ -58,7 +58,7 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	consumeChannel.QueueDeclare(
 		broker.config.BrokerSubject,
 		true,
-		false,
+		true,
 		false,
 		false,
 		nil,
