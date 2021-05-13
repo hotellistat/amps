@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/cloudevents/sdk-go/v2/event"
@@ -31,8 +30,9 @@ func Trigger(
 		return err
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	println("[batchable] response", string(body))
+	resp.Body.Close()
+
+	println("[batchable] status code", resp.StatusCode)
 
 	return nil
 }

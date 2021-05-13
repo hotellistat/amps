@@ -10,7 +10,7 @@ import (
 type Shim interface {
 
 	// Initial setup for all broker connections and runtime state
-	Initialize(config.Config, *job.Manifest)
+	Initialize(config.Config, *job.Manifest) bool
 
 	// Gracefully disconnect broker from any external resources
 	Teardown()

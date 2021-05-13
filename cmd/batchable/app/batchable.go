@@ -36,13 +36,6 @@ func Run() {
 	// Initialize a new broker instance.
 	broker.Initialize(*conf, &jobManifest)
 
-	// Create a new subscription for nats streaming
-	// err := broker.Start()
-
-	// if err != nil {
-	// log.Fatal(err.Error())
-	// }
-
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {
 		go Watchdog(conf, &jobManifest, &broker, manifestMutex)

@@ -37,9 +37,8 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 			return conn
 		}
 
-		println(err.Error())
-		// log.Printf("Trying to reconnect to RabbitMQ at %s\n", uri)
-		time.Sleep(500 * time.Millisecond)
+		println("[batchable] Dial exception", err.Error())
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -78,27 +77,24 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 			nil,
 		)
 
-		broker.consumeChannel = consumeChannel
-
 		publishChannel, publishErr := broker.connection.Channel()
 
 		if publishErr != nil {
 			log.Fatal("Could not create publisher channel")
 		}
 
+		broker.consumeChannel = consumeChannel
 		broker.publishChannel = publishChannel
 
-		// broker.mutex.Unlock()
-
 		broker.Start()
-		// // Set waitgroup to done, such that the initial connection phase stops blocking
-		// // further code execution
+
+		// Notify the connectedChan channel, that a connection has been successfully established
 		connected <- true
 	}
 }
 
 // Initialize creates a new natsshim connection
-func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Manifest) {
+func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Manifest) bool {
 	broker.config = config
 	broker.jobManifest = jobManifest
 
@@ -121,10 +117,8 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	// the AmqpConnectRoutine goroutine triggers a initial connect to the server
 	broker.connectionCloseChan <- amqp.ErrClosed
 
-	// connectionWaitGroup.Wait()
-	for range connectedChan {
-		break
-	}
+	// Wait for initial connection confirmation in the connectedChan channel
+	return <-connectedChan
 }
 
 // Teardown the natsshim connection and all natsshim services
@@ -230,7 +224,7 @@ func (broker *AMQPBroker) Start() error {
 	)
 
 	if err != nil {
-		log.Println("[batchable] Could not start consumer", err.Error())
+		println("[batchable] Could not start consumer", err.Error())
 		return err
 	}
 
@@ -259,7 +253,7 @@ func (broker *AMQPBroker) Stop() error {
 	err := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 
 	if err != nil {
-		log.Println("[batchable] Could not cancel consumer", err.Error())
+		println("[batchable] Could not cancel consumer", err.Error())
 		return err
 	}
 
@@ -272,7 +266,7 @@ func (broker *AMQPBroker) Stop() error {
 func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 	encodedData, marshalErr := json.Marshal(event)
 	if marshalErr != nil {
-		log.Panicln("Could not marshal cloudevent while publishing")
+		return errors.New("could not marshal cloudevent while publishing")
 	}
 
 	err := broker.publishChannel.Publish(
