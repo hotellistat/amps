@@ -37,8 +37,8 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 			return conn
 		}
 
-		log.Println(err.Error())
-		log.Printf("Trying to reconnect to RabbitMQ at %s\n", uri)
+		println(err.Error())
+		// log.Printf("Trying to reconnect to RabbitMQ at %s\n", uri)
 		time.Sleep(500 * time.Millisecond)
 	}
 }
@@ -49,6 +49,9 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 	// Loop through each element in the channel (will be run upon new cahnel event)
 	for range broker.connectionCloseChan {
+		broker.mutex = &sync.Mutex{}
+		broker.running = false
+
 		println("[batchable] Connecting to", uri)
 		broker.connection = broker.AmqpConnect(uri)
 		println("[batchable] Initialized AMQP connection")
@@ -85,6 +88,8 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 
 		broker.publishChannel = publishChannel
 
+		// broker.mutex.Unlock()
+
 		broker.Start()
 		// // Set waitgroup to done, such that the initial connection phase stops blocking
 		// // further code execution
@@ -94,7 +99,6 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 
 // Initialize creates a new natsshim connection
 func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Manifest) {
-	broker.mutex = &sync.Mutex{}
 	broker.config = config
 	broker.jobManifest = jobManifest
 

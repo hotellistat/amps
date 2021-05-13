@@ -18,7 +18,7 @@ for await (const req of s) {
 
   setTimeout(async () => {
     try {
-      await fetch("http://localhost:4000/complete", { method: "POST", body: JSON.stringify(body) })
+      await fetch("http://localhost:4000/delete", { method: "POST", body: JSON.stringify({ identifier: body.id }) })
     } catch (e) {
       console.log(e);
     }

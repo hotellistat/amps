@@ -13,31 +13,23 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 
 
-for i in range(100):
+for i in range(1):
     message = {
         "specversion": "1.0",
-        "type": "com.hotellistat.scraping",
+        "type": "com.hotellistat.revenue-module",
         "id": str(uuid.uuid4()),
         "source": "testing",
-        # "nopublish": True,
+        "nopublish": True,
         "data": {
-            "type": "auto",
-            "ota_id": 1,
-            "hotel_id": 17,
-            "hotel_ota_id": "de/rocco-forte-the-charles.de.html",
-            "offset": 0,
-            "crawl_date": "2021-05-01",
-            "days_to_crawl": 1,
-            "length_of_stay": 1,
-            "max_persons": 2,
-            "country_code": "de",
-            "currency": "EUR",
-            "closures": []
+           "hotel": 1914
         }
     }
     channel.basic_publish(
         exchange='',
-        routing_key='com.hotellistat.scraping',
+        properties=pika.BasicProperties(
+            delivery_mode = 2,
+        ),
+        routing_key='com.hotellistat.revenue-module',
         body=json.dumps(message)
     )
 

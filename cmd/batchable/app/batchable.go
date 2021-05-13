@@ -37,11 +37,11 @@ func Run() {
 	broker.Initialize(*conf, &jobManifest)
 
 	// Create a new subscription for nats streaming
-	err := broker.Start()
+	// err := broker.Start()
 
-	if err != nil {
-		log.Fatal(err.Error())
-	}
+	// if err != nil {
+	// log.Fatal(err.Error())
+	// }
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {
@@ -57,6 +57,17 @@ func Run() {
 		}
 
 		JobComplete(w, req, conf, &jobManifest, &broker)
+	})
+
+	// This endpoint handles job deletion
+	http.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
+
+		if req.Method != "POST" {
+			fmt.Fprintf(w, "Only POST is allowed")
+			return
+		}
+
+		JobDelete(w, req, conf, &jobManifest, &broker)
 	})
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
