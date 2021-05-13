@@ -55,10 +55,10 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 	consumeChannel.Qos(1, 0, false)
 
-	exchangeErr := consumeChannel.ExchangeDeclare(broker.config.BrokerSubject, "fanout", true, false, false, false, nil)
+	_, queueErr := consumeChannel.QueueDeclare(broker.config.BrokerSubject, true, false, false, false, nil)
 
-	if exchangeErr != nil {
-		log.Fatal("Could not declare exchange: ", exchangeErr.Error())
+	if queueErr != nil {
+		log.Fatal("Could not declare queue: ", queueErr.Error())
 	}
 
 	broker.consumeChannel = consumeChannel
