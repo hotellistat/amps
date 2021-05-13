@@ -8,7 +8,7 @@ connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         'localhost',
         5672,
-        credentials=pika.PlainCredentials("main", "OGQXDO2I39")
+        # credentials=pika.PlainCredentials("main", "OGQXDO2I39")
         ))
 channel = connection.channel()
 
@@ -26,6 +26,9 @@ for i in range(1):
     }
     channel.basic_publish(
         exchange='',
+        properties=pika.BasicProperties(
+            delivery_mode = 2,
+        ),
         routing_key='com.hotellistat.revenue-module',
         body=json.dumps(message)
     )
