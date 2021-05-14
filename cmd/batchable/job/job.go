@@ -7,18 +7,19 @@ import (
 )
 
 type Message interface {
+	GetData() []byte
 }
 
 // Job represents a job item
 type Job struct {
-	created time.Time
-	message Message
+	Created time.Time
+	Message Message
 }
 
 // Manifest represents the collection of current jobs
 type Manifest struct {
 	Mutex *sync.Mutex
-	jobs  map[string]Job
+	Jobs  map[string]Job
 }
 
 // NewManifest creates a new Manifest with a predefined maxSize
@@ -31,12 +32,12 @@ func NewManifest(size int) Manifest {
 
 // Size returns the current job manifest size
 func (jm *Manifest) Size() int {
-	return len(jm.jobs)
+	return len(jm.Jobs)
 }
 
 // HasJob checks if a job with a given ID already exists
 func (jm *Manifest) HasJob(ID string) bool {
-	_, exists := jm.jobs[ID]
+	_, exists := jm.Jobs[ID]
 	return exists
 }
 
@@ -46,9 +47,9 @@ func (jm *Manifest) InsertJob(ID string, message Message) error {
 		return errors.New("A Job with the ID: " + ID + " already exists")
 	}
 
-	jm.jobs[ID] = Job{
-		created: time.Now(),
-		message: message,
+	jm.Jobs[ID] = Job{
+		Created: time.Now(),
+		Message: message,
 	}
 
 	return nil
@@ -63,15 +64,15 @@ func (jm *Manifest) DeleteJob(ID string) error {
 
 	println("[batchable] Deleting Job ID:", ID)
 
-	delete(jm.jobs, ID)
+	delete(jm.Jobs, ID)
 
 	return nil
 }
 
 // DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
 func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
-	for ID, jobItem := range jm.jobs {
-		if time.Since(jobItem.created) > maxLifetime {
+	for ID, jobItem := range jm.Jobs {
+		if time.Since(jobItem.Created) > maxLifetime {
 			println("[batchable] Job ID:", ID, "timed out")
 			jm.DeleteJob(ID)
 		}

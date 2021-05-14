@@ -16,7 +16,7 @@ channel = connection.channel()
 for i in range(1):
     message = {
         "specversion": "1.0",
-        "type": "com.hotellistat.revenue-module",
+        "type": "com.hotellistat.scraping.booking",
         "id": str(uuid.uuid4()),
         "source": "testing",
         "nopublish": True,
@@ -29,7 +29,7 @@ for i in range(1):
         properties=pika.BasicProperties(
             delivery_mode = 2,
         ),
-        routing_key='com.hotellistat.revenue-module',
+        routing_key='com.hotellistat.scraping.booking',
         body=json.dumps(message)
     )
 
