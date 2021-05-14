@@ -43,30 +43,25 @@ func Run() {
 
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
 	http.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
-
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
-
 		JobComplete(w, req, conf, &jobManifest, &broker)
 	})
 
 	// This endpoint handles job deletion
 	http.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
-
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
-
 		JobDelete(w, req, conf, &jobManifest, &broker)
 	})
 
+	// Health check so the container can be killed if unhealthy
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
-
 		brokerHealthy := broker.Healthy()
-
 		if brokerHealthy {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
@@ -83,10 +78,10 @@ func Run() {
 	cleanupDone := make(chan bool)
 	signal.Notify(signalChan, os.Interrupt)
 	go func() {
-		for range signalChan {
-			fmt.Printf("\nReceived an interrupt, closing connection...\n\n")
+		for signal := range signalChan {
+			println("[batchable] signal:", signal.String())
+			broker.Evacuate()
 			broker.Teardown()
-
 			cleanupDone <- true
 		}
 	}()

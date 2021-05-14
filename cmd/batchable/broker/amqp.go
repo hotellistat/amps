@@ -37,7 +37,7 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 			return conn
 		}
 
-		println("[batchable] Dial exception", err.Error())
+		println("[batchable] dial exception", err.Error())
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -51,9 +51,9 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 		broker.mutex = &sync.Mutex{}
 		broker.running = false
 
-		println("[batchable] Connecting to", uri)
+		println("[batchable] connecting to", uri)
 		broker.connection = broker.AmqpConnect(uri)
-		println("[batchable] Initialized AMQP connection")
+		println("[batchable] initialized AMQP connection")
 
 		// Register a NotifyClose on the connectionCloseChan channel, such that
 		// a broker connection will trigger a reconnect by running a new iteration
@@ -63,7 +63,7 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 		consumeChannel, consumeErr := broker.connection.Channel()
 
 		if consumeErr != nil {
-			log.Fatal("Could not create consumer channel")
+			log.Fatal("[batchbable] could not create consumer channel")
 		}
 
 		consumeChannel.Qos(1, 0, false)
@@ -80,7 +80,7 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 		publishChannel, publishErr := broker.connection.Channel()
 
 		if publishErr != nil {
-			log.Fatal("Could not create publisher channel")
+			log.Fatal("[batchbable] could not create publisher channel")
 		}
 
 		broker.consumeChannel = consumeChannel
@@ -121,9 +121,33 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	return <-connectedChan
 }
 
+func (broker *AMQPBroker) Evacuate() error {
+
+	broker.jobManifest.Mutex.Lock()
+	defer broker.jobManifest.Mutex.Unlock()
+
+	for ID, job := range broker.jobManifest.Jobs {
+		jobData := job.Message.GetData()
+
+		println("[batchbable] evacuating job", ID, jobData)
+		broker.publishChannel.Publish(
+			"",
+			broker.config.BrokerSubject,
+			false,
+			false,
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        jobData,
+			})
+	}
+
+	println("[batchbable] evacuated jobs")
+	return nil
+}
+
 // Teardown the natsshim connection and all natsshim services
 func (broker *AMQPBroker) Teardown() {
-	println("[batchable] Tearing down broker")
+	println("[batchable] tearing down broker")
 	broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 	broker.connection.Close()
 }
@@ -136,6 +160,10 @@ type AmqpMessageWrapper struct {
 	message amqp.Delivery
 }
 
+func (wrapper AmqpMessageWrapper) GetData() []byte {
+	return wrapper.message.Body
+}
+
 func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 	event, err := cloudevent.Unmarshal(msg.Body)
@@ -146,7 +174,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	eventID := event.Context.GetID()
 
 	if broker.config.Debug {
-		println("[batchable] Job ID:", eventID)
+		println("[batchable] job ID:", eventID)
 	}
 
 	broker.jobManifest.Mutex.Lock()

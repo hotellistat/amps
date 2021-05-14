@@ -10,6 +10,10 @@ type FakeMessage struct {
 	test string
 }
 
+func (wrapper FakeMessage) GetData() []byte {
+	return []byte(wrapper.test)
+}
+
 func (n *FakeMessage) Ack() error {
 	log.Println("ACK")
 	return nil
