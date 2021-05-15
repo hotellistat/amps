@@ -5,7 +5,6 @@ import (
 	"batchable/cmd/batchable/config"
 	"batchable/cmd/batchable/job"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,7 +24,8 @@ func Run() {
 	broker, ok := brokerTypes[conf.BrokerType]
 
 	if !ok {
-		log.Fatal("Could not find broker type:", conf.BrokerType)
+		println("Could not find broker type:", conf.BrokerType)
+		os.Exit(1)
 	}
 
 	var manifestMutex = &sync.Mutex{}

@@ -6,7 +6,7 @@ import (
 	"batchable/cmd/batchable/job"
 	"batchable/cmd/batchable/workload"
 	"errors"
-	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -67,7 +67,8 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		consumeChannel, consumeErr := broker.connection.Channel()
 
 		if consumeErr != nil {
-			log.Fatal("[batchbable] could not create consumer channel")
+			println("[batchbable] could not create consumer channel")
+			os.Exit(1)
 		}
 
 		consumeChannel.Qos(1, 0, false)
@@ -84,7 +85,8 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		publishChannel, publishErr := broker.connection.Channel()
 
 		if publishErr != nil {
-			log.Fatal("[batchbable] could not create publisher channel")
+			println("[batchbable] could not create publisher channel")
+			os.Exit(1)
 		}
 
 		broker.consumeChannel = consumeChannel
