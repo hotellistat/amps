@@ -42,7 +42,6 @@ func JobComplete(
 	eventID := event.Context.GetID()
 
 	jobManifest.Mutex.Lock()
-
 	if !jobManifest.HasJob(eventID) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
@@ -58,9 +57,7 @@ func JobComplete(
 	nopublish, _ := event.Context.GetExtension("nopublish")
 
 	jobManifest.DeleteJob(eventID)
-
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
-
 	jobManifest.Mutex.Unlock()
 
 	if startBroker {
@@ -105,7 +102,6 @@ func JobDelete(
 	}
 
 	jobManifest.Mutex.Lock()
-
 	if !jobManifest.HasJob(job.Identifier) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
@@ -118,11 +114,8 @@ func JobDelete(
 	// the recieved event to our broker. This is normally used,
 	// if you want to define the end of a chain of workloads where the last
 	// link of the chain should not create any new events in the broker anymore
-
 	jobManifest.DeleteJob(job.Identifier)
-
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
-
 	jobManifest.Mutex.Unlock()
 
 	if startBroker {

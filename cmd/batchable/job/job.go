@@ -1,9 +1,31 @@
 package job
 
 import (
-	"errors"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	messagesInserted = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "batchable_messages_inserted_total",
+		Help: "The total number of inserted messages from the broker",
+	})
+	messagesDeleted = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "batchable_messages_deleted_total",
+		Help: "The total number of inserted messages from the broker",
+	})
+	currentJobCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "batchable_messages_count",
+		Help: "The total number of inserted messages from the broker",
+	})
+	messageLifetime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "batchable_message_lifetime_seconds",
+		Help:    "The total number of inserted messages from the broker",
+		Buckets: []float64{1., 15., 30., 45., 60., 150., 300., 600., 600. * 30, 600. * 60, 600. * 60 * 2, 600. * 60 * 4},
+	})
 )
 
 type Message interface {
@@ -18,14 +40,14 @@ type Job struct {
 
 // Manifest represents the collection of current jobs
 type Manifest struct {
-	Mutex *sync.Mutex
+	Mutex *sync.RWMutex
 	Jobs  map[string]Job
 }
 
 // NewManifest creates a new Manifest with a predefined maxSize
 func NewManifest(size int) Manifest {
 	return Manifest{
-		&sync.Mutex{},
+		&sync.RWMutex{},
 		make(map[string]Job, size),
 	}
 }
@@ -43,40 +65,28 @@ func (jm *Manifest) HasJob(ID string) bool {
 
 // InsertJob inserts a new job and checks that there are no duplicates
 func (jm *Manifest) InsertJob(ID string, message Message) error {
-	if jm.HasJob(ID) {
-		return errors.New("A Job with the ID: " + ID + " already exists")
-	}
+	messagesInserted.Inc()
 
 	jm.Jobs[ID] = Job{
 		Created: time.Now(),
 		Message: message,
 	}
 
+	currentJobCount.Set(float64(jm.Size()))
+
 	return nil
 }
 
 // DeleteJob removes a job if it exists, otherwise throws an error
 func (jm *Manifest) DeleteJob(ID string) error {
-
-	if !jm.HasJob(ID) {
-		return errors.New("A Job with the ID: " + ID + " does not exist")
-	}
+	messagesDeleted.Inc()
 
 	println("[batchable] Deleting Job ID:", ID)
 
+	job := jm.Jobs[ID]
+
 	delete(jm.Jobs, ID)
-
-	return nil
-}
-
-// DeleteDeceased removes all jobs that outlived the max duration relatvie to the current time
-func (jm *Manifest) DeleteDeceased(maxLifetime time.Duration) error {
-	for ID, jobItem := range jm.Jobs {
-		if time.Since(jobItem.Created) > maxLifetime {
-			println("[batchable] Job ID:", ID, "timed out")
-			jm.DeleteJob(ID)
-		}
-	}
-
+	messageLifetime.Observe(float64(time.Since(job.Created).Seconds()))
+	currentJobCount.Set(float64(jm.Size()))
 	return nil
 }

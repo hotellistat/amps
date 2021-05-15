@@ -8,12 +8,12 @@ connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         'localhost',
         5672,
-        credentials=pika.PlainCredentials("main", "OGQXDO2I39")
+        # credentials=pika.PlainCredentials("main", "OGQXDO2I39")
         ))
 channel = connection.channel()
 
 
-for i in range(1):
+for i in range(100):
     message = {
          "specversion": "1.0",
         "type": "com.hotellistat.scraping",

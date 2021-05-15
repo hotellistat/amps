@@ -19,7 +19,12 @@ func Watchdog(
 	go func() {
 		for range ticker.C {
 			jobManifest.Mutex.Lock()
-			jobManifest.DeleteDeceased(conf.JobTimeout)
+			for ID, jobItem := range jobManifest.Jobs {
+				if time.Since(jobItem.Created) > conf.JobTimeout {
+					println("[batchable] Job ID:", ID, "timed out")
+					jobManifest.DeleteJob(ID)
+				}
+			}
 			startBroker := jobManifest.Size() < conf.MaxConcurrency
 			jobManifest.Mutex.Unlock()
 

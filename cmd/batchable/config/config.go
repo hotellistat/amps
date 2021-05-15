@@ -14,6 +14,8 @@ type Config struct {
 	Version                 string
 	BrokerDsn               string
 	WorkerID                string
+	Port                    int
+	MetricsPort             int
 	BrokerType              string
 	BrokerSubject           string
 	Debug                   bool
@@ -21,6 +23,7 @@ type Config struct {
 	MaxConcurrency          int
 	WorkloadAddress         string
 	WorkloadResponseTimeout time.Duration
+	MetricsEnabled          bool
 }
 
 // New returns a new Config struct
@@ -32,6 +35,8 @@ func New() *Config {
 		Version:                 GetEnv("BATCHABLE_VERSION", "development"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
+		Port:                    GetEnvAsInt("PORT", 4000),
+		MetricsPort:             GetEnvAsInt("METRICS_PORT", 9090),
 		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
 		Debug:                   GetEnvAsBool("DEBUG", false),
@@ -39,6 +44,7 @@ func New() *Config {
 		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),
 		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
 		WorkloadAddress:         GetEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
+		MetricsEnabled:          GetEnvAsBool("METRICS_ENABLED", true),
 	}
 }
 

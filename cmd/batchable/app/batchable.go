@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Run is the primary entrypoint of the batchable application
@@ -41,8 +43,9 @@ func Run() {
 		go Watchdog(conf, &jobManifest, &broker, manifestMutex)
 	}
 
+	batchableServer := http.NewServeMux()
 	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-	http.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
+	batchableServer.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
@@ -51,7 +54,7 @@ func Run() {
 	})
 
 	// This endpoint handles job deletion
-	http.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
+	batchableServer.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
@@ -60,7 +63,7 @@ func Run() {
 	})
 
 	// Health check so the container can be killed if unhealthy
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
+	batchableServer.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		brokerHealthy := broker.Healthy()
 		if brokerHealthy {
 			w.WriteHeader(http.StatusOK)
@@ -71,7 +74,14 @@ func Run() {
 		}
 	})
 
-	go http.ListenAndServe(":4000", nil)
+	// Info endpoint
+	if conf.MetricsEnabled {
+		metricsServer := http.NewServeMux()
+		metricsServer.Handle("/metrics", promhttp.Handler())
+		go http.ListenAndServe(fmt.Sprint(":", conf.MetricsPort), metricsServer)
+	}
+
+	go http.ListenAndServe(fmt.Sprint(":", conf.Port), batchableServer)
 
 	// General signal handling to teardown the worker
 	signalChan := make(chan os.Signal, 1)
