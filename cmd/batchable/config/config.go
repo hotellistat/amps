@@ -32,7 +32,7 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		Version:                 GetEnv("BATCHABLE_VERSION", "development"),
+		Version:                 GetEnv("BATCHABLE_VERSION", "undefined"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		Port:                    GetEnvAsInt("PORT", 4000),
