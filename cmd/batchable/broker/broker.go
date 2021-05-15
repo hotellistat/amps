@@ -22,7 +22,7 @@ type Shim interface {
 	Start() error
 
 	// Rreturn true if the broker is currently active (if Start was called)
-	Running() bool
+	IsRunning() bool
 
 	// Stop message recieving, while still keeping open fundamental connections to external resources
 	Stop() error

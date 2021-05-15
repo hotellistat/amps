@@ -12,9 +12,7 @@ type exitCallback func(code int)
 
 // Config represents the global configuation for this project
 type Config struct {
-	BrokerUsername          string
-	BrokerPassword          string
-	BrokerHost              string
+	BrokerDsn               string
 	WorkerID                string
 	BrokerType              string
 	BrokerSubject           string
@@ -31,9 +29,7 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		BrokerUsername:          GetEnv("BROKER_AUTH_USERNAME", ""),
-		BrokerPassword:          GetEnv("BROKER_AUTH_PASSWORD", ""),
-		BrokerHost:              GetEnv("BROKER_HOST", "localhost"),
+		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),

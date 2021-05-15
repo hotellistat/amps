@@ -1,6 +1,7 @@
 package job
 
 import (
+	"batchable/cmd/batchable/job"
 	"log"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestSize(t *testing.T) {
 
 	var tmpSize int
 
-	manifest := NewManifest(10)
+	manifest := job.NewManifest(10)
 
 	tmpSize = manifest.Size()
 
@@ -84,7 +85,7 @@ func TestHasJob(t *testing.T) {
 		test: "test",
 	}
 
-	manifest := NewManifest(10)
+	manifest := job.NewManifest(10)
 
 	isFalse := manifest.HasJob("1111")
 
@@ -106,7 +107,7 @@ func TestInsertJob(t *testing.T) {
 		test: "test",
 	}
 
-	manifest := NewManifest(10)
+	manifest := job.NewManifest(10)
 
 	isFalse := manifest.HasJob("aaaa")
 
@@ -134,7 +135,7 @@ func TestDeleteJob(t *testing.T) {
 		test: "test",
 	}
 
-	manifest := NewManifest(10)
+	manifest := job.NewManifest(10)
 
 	manifest.InsertJob("bbbb", fakeMessage)
 
@@ -165,7 +166,7 @@ func TestDeleteDeceased(t *testing.T) {
 		test: "test",
 	}
 
-	manifest := NewManifest(10)
+	manifest := job.NewManifest(10)
 
 	manifest.InsertJob("aaaa", fakeMessage)
 
