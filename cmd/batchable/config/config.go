@@ -11,6 +11,7 @@ type exitCallback func(code int)
 
 // Config represents the global configuation for this project
 type Config struct {
+	Version                 string
 	BrokerDsn               string
 	WorkerID                string
 	BrokerType              string
@@ -28,6 +29,7 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
+		Version:                 GetEnv("BATCHABLE_VERSION", "development"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),

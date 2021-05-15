@@ -1,3 +1,6 @@
+ARG version
+ENV BATCHABLE_VERSION=$version
+
 FROM golang AS build
 WORKDIR /app
 COPY . .
