@@ -17,19 +17,19 @@ import (
 
 // AMQPBroker represents the primary natsshim communication instance
 type AMQPBroker struct {
-	running             bool
-	jobManifest         *job.Manifest
-	config              config.Config
-	connection          *amqp.Connection
-	connectionCloseChan chan *amqp.Error
-	consumeChannel      *amqp.Channel
-	publishChannel      *amqp.Channel
-	mutex               *sync.Mutex
+	running        bool
+	jobManifest    *job.Manifest
+	config         config.Config
+	connection     *amqp.Connection
+	reconnectChan  chan *amqp.Error
+	consumeChannel *amqp.Channel
+	publishChannel *amqp.Channel
+	mutex          *sync.Mutex
 }
 
 // This functions retries a server connections infinitely, until it managed
 // to establish a connection to the server.
-func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
+func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Connection {
 	for {
 		conn, err := amqp.Dial(uri)
 
@@ -38,6 +38,7 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 		}
 
 		println("[batchable] dial exception", err.Error())
+		errorChan <- err
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -45,20 +46,23 @@ func (broker *AMQPBroker) AmqpConnect(uri string) *amqp.Connection {
 // This routinge will always run in the background as a groutine and will
 // initiate a reconnect as soon as a new event gets pushed into the
 // connecitonCloseChan channel
-func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
+func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 	// Loop through each element in the channel (will be run upon new cahnel event)
-	for range broker.connectionCloseChan {
+	for range broker.reconnectChan {
 		broker.mutex = &sync.Mutex{}
 		broker.running = false
 
+		connectErrorChan := make(chan error)
+
 		println("[batchable] connecting to", uri)
-		broker.connection = broker.AmqpConnect(uri)
+		broker.connection = broker.amqpConnect(uri, connectErrorChan)
+
 		println("[batchable] initialized AMQP connection")
 
-		// Register a NotifyClose on the connectionCloseChan channel, such that
+		// Register a NotifyClose on the reconnectChan channel, such that
 		// a broker connection will trigger a reconnect by running a new iteration
 		// of the current for loop
-		broker.connection.NotifyClose(broker.connectionCloseChan)
+		broker.connection.NotifyClose(broker.reconnectChan)
 
 		consumeChannel, consumeErr := broker.connection.Channel()
 
@@ -97,25 +101,18 @@ func (broker *AMQPBroker) AmqpConnectRoutine(uri string, connected chan bool) {
 func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Manifest) bool {
 	broker.config = config
 	broker.jobManifest = jobManifest
+	uri := config.BrokerDsn
 
-	auth := ""
-
-	if config.BrokerUsername != "" && config.BrokerPassword != "" {
-		auth = config.BrokerUsername + ":" + config.BrokerPassword + "@"
-	}
-
-	uri := "amqp://" + auth + config.BrokerHost + "/"
-
-	// Create a new connectionCloseChan
-	broker.connectionCloseChan = make(chan *amqp.Error)
+	// Create a new reconnectChan
+	broker.reconnectChan = make(chan *amqp.Error)
 
 	connectedChan := make(chan bool, 1)
 
-	go broker.AmqpConnectRoutine(uri, connectedChan)
+	go broker.amqpConnectRoutine(uri, connectedChan)
 
-	// Send initial ErrClosed event into connectionCloseChan cahnnel, such that
+	// Send initial ErrClosed event into reconnectChan cahnnel, such that
 	// the AmqpConnectRoutine goroutine triggers a initial connect to the server
-	broker.connectionCloseChan <- amqp.ErrClosed
+	broker.reconnectChan <- amqp.ErrClosed
 
 	// Wait for initial connection confirmation in the connectedChan channel
 	return <-connectedChan
@@ -152,7 +149,7 @@ func (broker *AMQPBroker) Teardown() {
 	broker.connection.Close()
 }
 
-func (broker *AMQPBroker) Running() bool {
+func (broker *AMQPBroker) IsRunning() bool {
 	return broker.running
 }
 

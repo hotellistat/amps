@@ -3,6 +3,7 @@ module batchable
 go 1.15
 
 require (
+	github.com/NeowayLabs/wabbit v0.0.0-20201021105516-ded4a9ef19d2 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.3.1
 	github.com/common-nighthawk/go-figure v0.0.0-20200609044655-c4b36f998cf2 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.1.0 // indirect
