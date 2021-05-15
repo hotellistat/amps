@@ -2,7 +2,6 @@ package job
 
 import (
 	"batchable/cmd/batchable/job"
-	"log"
 	"testing"
 	"time"
 )
@@ -16,12 +15,12 @@ func (wrapper FakeMessage) GetData() []byte {
 }
 
 func (n *FakeMessage) Ack() error {
-	log.Println("ACK")
+	println("ACK")
 	return nil
 }
 
 func (n *FakeMessage) Reject() error {
-	log.Println("REJECT")
+	println("REJECT")
 	return nil
 }
 
