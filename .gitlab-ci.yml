@@ -11,7 +11,7 @@ Test:
   services:
     - rabbitmq
   before_script:
-  script: make test
+  script: make runTests
 
 Deploy:
   stage: Deploy
