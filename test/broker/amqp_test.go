@@ -37,11 +37,7 @@ import (
 // }
 
 func TestAmqpInitialize(t *testing.T) {
-	err := godotenv.Load()
-
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+	godotenv.Load()
 
 	broker := broker.AMQPBroker{}
 

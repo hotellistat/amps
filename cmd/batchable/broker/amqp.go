@@ -179,6 +179,10 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	broker.jobManifest.Mutex.Lock()
 	defer broker.jobManifest.Mutex.Unlock()
 
+	if broker.jobManifest.HasJob(eventID) {
+		return errors.New("[batchable] Job ID: " + eventID + "already exists")
+	}
+
 	// Insert new into queue
 	insertErr := broker.jobManifest.InsertJob(
 		eventID,
@@ -186,6 +190,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 			msg,
 		},
 	)
+
 	if insertErr != nil {
 		return insertErr
 	}
@@ -208,7 +213,17 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	if workloadErr != nil {
 		println("[batchable]", workloadErr.Error())
 		println("[batchable] Rejecting job for rescheduling")
+
+		broker.jobManifest.Mutex.Lock()
+		if !broker.jobManifest.HasJob(eventID) {
+			broker.jobManifest.Mutex.Unlock()
+			println("[batchable] Job ID:", eventID, "does not exists in the manifest")
+			return nil
+		}
+
 		delError := broker.jobManifest.DeleteJob(eventID)
+		broker.jobManifest.Mutex.Unlock()
+
 		if delError != nil {
 			println(delError.Error())
 		}
