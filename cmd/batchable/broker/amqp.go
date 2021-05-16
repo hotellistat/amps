@@ -18,13 +18,14 @@ import (
 // AMQPBroker represents the primary natsshim communication instance
 type AMQPBroker struct {
 	running        bool
+	connected      bool
+	busy           *sync.Mutex
 	jobManifest    *job.Manifest
 	config         config.Config
 	connection     *amqp.Connection
 	reconnectChan  chan *amqp.Error
 	consumeChannel *amqp.Channel
 	publishChannel *amqp.Channel
-	mutex          *sync.Mutex
 }
 
 // This functions retries a server connections infinitely, until it managed
@@ -34,6 +35,7 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Co
 		conn, err := amqp.Dial(uri)
 
 		if err == nil {
+			broker.connected = true
 			return conn
 		}
 
@@ -49,8 +51,11 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Co
 func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 	// Loop through each element in the channel (will be run upon new cahnel event)
 	for range broker.reconnectChan {
-		broker.mutex = &sync.Mutex{}
 		broker.running = false
+		broker.connected = false
+		broker.consumeChannel = nil
+		broker.publishChannel = nil
+		broker.busy = &sync.Mutex{}
 
 		connectErrorChan := make(chan error)
 
@@ -251,8 +256,8 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 // Start creates a new subscription and executes the messageCallback on new messages
 func (broker *AMQPBroker) Start() error {
-	broker.mutex.Lock()
-	defer broker.mutex.Unlock()
+	broker.busy.Lock()
+	defer broker.busy.Unlock()
 
 	if broker.running {
 		return errors.New("broker is already running")
@@ -288,8 +293,8 @@ func (broker *AMQPBroker) Start() error {
 }
 
 func (broker *AMQPBroker) Stop() error {
-	broker.mutex.Lock()
-	defer broker.mutex.Unlock()
+	broker.busy.Lock()
+	defer broker.busy.Unlock()
 
 	if !broker.running {
 		return errors.New("broker is already stopped")
@@ -333,5 +338,5 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 
 // Healthy checks the health of the broker
 func (broker *AMQPBroker) Healthy() bool {
-	return true
+	return broker.connected
 }
