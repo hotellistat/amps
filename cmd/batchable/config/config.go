@@ -12,18 +12,18 @@ type exitCallback func(code int)
 // Config represents the global configuation for this project
 type Config struct {
 	Version                 string
+	BrokerType              string
 	BrokerDsn               string
+	BrokerSubject           string
 	WorkerID                string
 	Port                    int
-	MetricsPort             int
-	BrokerType              string
-	BrokerSubject           string
 	Debug                   bool
-	JobTimeout              time.Duration
+	MetricsEnabled          bool
+	MetricsPort             int
 	MaxConcurrency          int
+	JobTimeout              time.Duration
 	WorkloadAddress         string
 	WorkloadResponseTimeout time.Duration
-	MetricsEnabled          bool
 }
 
 // New returns a new Config struct
@@ -33,18 +33,18 @@ func New() *Config {
 
 	return &Config{
 		Version:                 GetEnv("BATCHABLE_VERSION", "undefined"),
+		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
+		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		Port:                    GetEnvAsInt("PORT", 4000),
-		MetricsPort:             GetEnvAsInt("METRICS_PORT", 9090),
-		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
-		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
 		Debug:                   GetEnvAsBool("DEBUG", false),
+		MetricsEnabled:          GetEnvAsBool("METRICS_ENABLED", true),
+		MetricsPort:             GetEnvAsInt("METRICS_PORT", 9090),
 		MaxConcurrency:          GetEnvAsInt("MAX_CONCURRENCY", 100),
 		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),
-		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
 		WorkloadAddress:         GetEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
-		MetricsEnabled:          GetEnvAsBool("METRICS_ENABLED", true),
+		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
 	}
 }
 
