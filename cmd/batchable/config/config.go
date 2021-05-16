@@ -11,19 +11,19 @@ type exitCallback func(code int)
 
 // Config represents the global configuation for this project
 type Config struct {
-	Version                 string
-	BrokerType              string
-	BrokerDsn               string
-	BrokerSubject           string
-	WorkerID                string
-	Port                    int
-	Debug                   bool
-	MetricsEnabled          bool
-	MetricsPort             int
-	MaxConcurrency          int
-	JobTimeout              time.Duration
-	WorkloadAddress         string
-	WorkloadResponseTimeout time.Duration
+	Version                 string        `description:"The batchable container version"`
+	BrokerType              string        `description:"The broker type you want to use, currently only 'amqp' is supported"`
+	BrokerDsn               string        `description:"The brokers' connection DSN. This should hold the broker endpoint aswell as authentication values"`
+	BrokerSubject           string        `description:"The broker subject on which batchable container should listen to"`
+	WorkerID                string        `description:"The workers' ID. This has to be unique across all your batchable containers"`
+	Port                    int           `description:"The port on which the batchable container HTTP server should be reachable"`
+	Debug                   bool          `description:"Enable debug mode for verbose output"`
+	MetricsEnabled          bool          `description:"Enable the prometheus metrics exporter"`
+	MetricsPort             int           `description:"The prometheus metrics exported port"`
+	MaxConcurrency          int           `description:"The maximum amount of jobs that can run concurrently"`
+	JobTimeout              time.Duration `description:"The maximum lifetime of a job. If this is exceeded, a job will be deleted from the queue"`
+	WorkloadAddress         string        `description:"The workload address to which to send the job payload"`
+	WorkloadResponseTimeout time.Duration `description:"The wokrload response timeout, after which the job will be returned to the broker"`
 }
 
 // New returns a new Config struct
