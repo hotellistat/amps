@@ -122,9 +122,10 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 
 func (broker *AMQPBroker) Evacuate() error {
 
-	broker.jobManifest.Mutex.Lock()
-	defer broker.jobManifest.Mutex.Unlock()
+	broker.jobManifest.Mutex.RLock()
+	defer broker.jobManifest.Mutex.RUnlock()
 
+	println("[batchable] Starting evacuation")
 	for ID, job := range broker.jobManifest.Jobs {
 		jobData := job.Message.GetData()
 
@@ -177,9 +178,9 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	}
 
 	broker.jobManifest.Mutex.Lock()
-	defer broker.jobManifest.Mutex.Unlock()
 
 	if broker.jobManifest.HasJob(eventID) {
+		broker.jobManifest.Mutex.Unlock()
 		return errors.New("[batchable] Job ID: " + eventID + "already exists")
 	}
 
@@ -192,6 +193,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	)
 
 	if insertErr != nil {
+		broker.jobManifest.Mutex.Unlock()
 		return insertErr
 	}
 
@@ -207,6 +209,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 			println("[batchable] Max job concurrency reached, stopping broker")
 		}
 	}
+	broker.jobManifest.Mutex.Unlock()
 
 	// Trigger the workload endpoint by sending the job via POST
 	workloadErr := workload.Trigger(event, broker.config)
