@@ -9,14 +9,15 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Run is the primary entrypoint of the batchable application
-func Run() {
-	conf := config.New()
-
+func Run(conf *config.Config) {
+	defer sentry.Recover()
 	printBanner(*conf)
 
 	brokerTypes := map[string]broker.Shim{
@@ -40,40 +41,11 @@ func Run() {
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout != 0 {
-		go Watchdog(conf, &jobManifest, &broker, manifestMutex)
+		tickInterval, _ := time.ParseDuration("1000ms")
+		ticker := time.NewTicker(tickInterval)
+
+		go Watchdog(ticker, conf, &jobManifest, &broker, manifestMutex)
 	}
-
-	batchableServer := http.NewServeMux()
-	// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-	batchableServer.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != "POST" {
-			fmt.Fprintf(w, "Only POST is allowed")
-			return
-		}
-		JobComplete(w, req, conf, &jobManifest, &broker)
-	})
-
-	// This endpoint handles job deletion
-	batchableServer.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != "POST" {
-			fmt.Fprintf(w, "Only POST is allowed")
-			return
-		}
-		JobDelete(w, req, conf, &jobManifest, &broker)
-	})
-
-	// Health check so the container can be killed if unhealthy
-	batchableServer.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
-		brokerHealthy := broker.Healthy()
-		if brokerHealthy {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("UNHEALTHY"))
-		}
-	})
-
 	// Info endpoint
 	if conf.MetricsEnabled {
 		metricsServer := http.NewServeMux()
@@ -81,7 +53,48 @@ func Run() {
 		go http.ListenAndServe(fmt.Sprint(":", conf.MetricsPort), metricsServer)
 	}
 
-	go http.ListenAndServe(fmt.Sprint(":", conf.Port), batchableServer)
+	go func(localHub *sentry.Hub) {
+		batchableServer := http.NewServeMux()
+
+		// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
+		batchableServer.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != "POST" {
+				fmt.Fprintf(w, "Only POST is allowed")
+				return
+			}
+			err := JobComplete(w, req, conf, &jobManifest, &broker)
+			if err != nil {
+				localHub.CaptureException(err)
+			}
+		})
+
+		// This endpoint handles job deletion
+		batchableServer.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != "POST" {
+				fmt.Fprintf(w, "Only POST is allowed")
+				return
+			}
+			err := JobDelete(w, req, conf, &jobManifest, &broker)
+			if err != nil {
+				localHub.CaptureException(err)
+			}
+		})
+
+		// Health check so the container can be killed if unhealthy
+		batchableServer.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
+			brokerHealthy := broker.Healthy()
+			if brokerHealthy {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("OK"))
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte("UNHEALTHY"))
+			}
+		})
+
+		http.ListenAndServe(fmt.Sprint(":", conf.Port), batchableServer)
+
+	}(sentry.CurrentHub().Clone())
 
 	// General signal handling to teardown the worker
 	signalChan := make(chan os.Signal, 1)

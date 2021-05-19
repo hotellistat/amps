@@ -18,6 +18,8 @@ type Config struct {
 	WorkerID                string        `description:"The workers' ID. This has to be unique across all your batchable containers"`
 	Port                    int           `description:"The port on which the batchable container HTTP server should be reachable"`
 	Debug                   bool          `description:"Enable debug mode for verbose output"`
+	SentryDsn               string        `description:"The Sentry DSN enpoint to send error logs to"`
+	Environment             string        `description:"The in which the batchable container is running"`
 	MetricsEnabled          bool          `description:"Enable the prometheus metrics exporter"`
 	MetricsPort             int           `description:"The prometheus metrics exported port"`
 	MaxConcurrency          int           `description:"The maximum amount of jobs that can run concurrently"`
@@ -32,13 +34,15 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		Version:                 GetEnv("BATCHABLE_VERSION", "undefined"),
+		Version:                 GetEnv("BATCHABLE_VERSION", "master"),
 		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
 		WorkerID:                GetEnv("WORKER_ID", workerID),
 		Port:                    GetEnvAsInt("PORT", 4000),
 		Debug:                   GetEnvAsBool("DEBUG", false),
+		SentryDsn:               GetEnv("SENTRY_DSN", ""),
+		Environment:             GetEnv("ENVIRONMENT", "development"),
 		MetricsEnabled:          GetEnvAsBool("METRICS_ENABLED", true),
 		MetricsPort:             GetEnvAsInt("METRICS_PORT", 9090),
 		MaxConcurrency:          GetEnvAsInt("MAX_CONCURRENCY", 100),

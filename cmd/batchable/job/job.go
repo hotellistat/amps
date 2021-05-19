@@ -64,7 +64,7 @@ func (jm *Manifest) HasJob(ID string) bool {
 }
 
 // InsertJob inserts a new job and checks that there are no duplicates
-func (jm *Manifest) InsertJob(ID string, message Message) error {
+func (jm *Manifest) InsertJob(ID string, message Message) {
 	messagesInserted.Inc()
 
 	jm.Jobs[ID] = Job{
@@ -73,12 +73,10 @@ func (jm *Manifest) InsertJob(ID string, message Message) error {
 	}
 
 	currentJobCount.Set(float64(jm.Size()))
-
-	return nil
 }
 
 // DeleteJob removes a job if it exists, otherwise throws an error
-func (jm *Manifest) DeleteJob(ID string) error {
+func (jm *Manifest) DeleteJob(ID string) {
 	messagesDeleted.Inc()
 
 	println("[batchable] Deleting Job ID:", ID)
@@ -88,5 +86,4 @@ func (jm *Manifest) DeleteJob(ID string) error {
 	delete(jm.Jobs, ID)
 	messageLifetime.Observe(float64(time.Since(job.Created).Seconds()))
 	currentJobCount.Set(float64(jm.Size()))
-	return nil
 }
