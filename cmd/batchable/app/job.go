@@ -6,6 +6,7 @@ import (
 	"batchable/cmd/batchable/config"
 	"batchable/cmd/batchable/job"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 
@@ -18,7 +19,7 @@ func JobComplete(
 	req *http.Request,
 	conf *config.Config,
 	jobManifest *job.Manifest,
-	broker *broker.Shim) {
+	broker *broker.Shim) error {
 
 	event := cloudevents.NewEvent()
 
@@ -27,7 +28,7 @@ func JobComplete(
 	if readErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not read request Body"))
-		return
+		return readErr
 	}
 
 	event, err := cloudevent.Unmarshal(body)
@@ -36,18 +37,20 @@ func JobComplete(
 		println("[batchable]", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Can not unmarshal cloudevent, make sure you send a cloudevent in structured content mode"))
-		return
+		return err
 	}
 
 	eventID := event.Context.GetID()
 
 	jobManifest.Mutex.Lock()
+
+	// Return if job does not exist in the job manifest
 	if !jobManifest.HasJob(eventID) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
 		println("[batchable] Job ID:", eventID, "does not exists anymore. Publishing blocked.")
-		return
+		return errors.New("Job ID: " + eventID + " does not exists in the manifest")
 	}
 
 	// Fetch the nopublish event context extension. This will prevent publishing
@@ -57,11 +60,15 @@ func JobComplete(
 	nopublish, _ := event.Context.GetExtension("nopublish")
 
 	jobManifest.DeleteJob(eventID)
+
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
 
 	if startBroker {
-		(*broker).Start()
+		startErr := (*broker).Start()
+		if startErr != nil {
+			return startErr
+		}
 	}
 
 	if nopublish != true {
@@ -73,12 +80,13 @@ func JobComplete(
 			println("[batchable] Could not publish event to broker", publishErr.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Could not publish your event to the broker"))
-			return
+			return publishErr
 		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
+	return nil
 }
 
 type JobDeleteSchema struct {
@@ -90,7 +98,7 @@ func JobDelete(
 	req *http.Request,
 	conf *config.Config,
 	jobManifest *job.Manifest,
-	broker *broker.Shim) {
+	broker *broker.Shim) error {
 
 	var job JobDeleteSchema
 
@@ -98,16 +106,18 @@ func JobDelete(
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 
 	jobManifest.Mutex.Lock()
+
+	// Check if job exists in the manifest
 	if !jobManifest.HasJob(job.Identifier) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
 		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
-		return
+		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
 	}
 
 	// Fetch the nopublish event context extension. This will prevent publishing
@@ -119,9 +129,13 @@ func JobDelete(
 	jobManifest.Mutex.Unlock()
 
 	if startBroker {
-		(*broker).Start()
+		startErr := (*broker).Start()
+		if startErr != nil {
+			return startErr
+		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
+	return nil
 }

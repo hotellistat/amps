@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/getsentry/sentry-go"
 	"github.com/streadway/amqp"
 	"k8s.io/apimachinery/pkg/util/json"
 )
@@ -30,7 +31,11 @@ type AMQPBroker struct {
 
 // This functions retries a server connections infinitely, until it managed
 // to establish a connection to the server.
-func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Connection {
+func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub *sentry.Hub) *amqp.Connection {
+	localHub.ConfigureScope(func(scope *sentry.Scope) {
+		scope.SetTag("goroutine", "amqpConnect")
+	})
+
 	for {
 		conn, err := amqp.Dial(uri)
 
@@ -39,6 +44,7 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Co
 			return conn
 		}
 
+		localHub.CaptureException(err)
 		println("[batchable] dial exception", err.Error())
 		errorChan <- err
 		time.Sleep(1 * time.Second)
@@ -49,6 +55,11 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error) *amqp.Co
 // initiate a reconnect as soon as a new event gets pushed into the
 // connecitonCloseChan channel
 func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
+	localHub := sentry.CurrentHub().Clone()
+	localHub.ConfigureScope(func(scope *sentry.Scope) {
+		scope.SetTag("goroutine", "amqpConnect")
+	})
+
 	// Loop through each element in the channel (will be run upon new cahnel event)
 	for range broker.reconnectChan {
 		broker.running = false
@@ -60,7 +71,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		connectErrorChan := make(chan error)
 
 		println("[batchable] connecting to", uri)
-		broker.connection = broker.amqpConnect(uri, connectErrorChan)
+		broker.connection = broker.amqpConnect(uri, connectErrorChan, localHub)
 
 		println("[batchable] initialized AMQP connection")
 
@@ -72,13 +83,17 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		consumeChannel, consumeErr := broker.connection.Channel()
 
 		if consumeErr != nil {
+			localHub.CaptureException(consumeErr)
 			println("[batchbable] could not create consumer channel")
 			os.Exit(1)
 		}
 
-		consumeChannel.Qos(1, 0, false)
+		qosErr := consumeChannel.Qos(1, 0, false)
+		if qosErr != nil {
+			localHub.CaptureException(qosErr)
+		}
 
-		consumeChannel.QueueDeclare(
+		_, queueErr := consumeChannel.QueueDeclare(
 			broker.config.BrokerSubject,
 			true,
 			false,
@@ -87,9 +102,14 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 			nil,
 		)
 
+		if queueErr != nil {
+			localHub.CaptureException(queueErr)
+		}
+
 		publishChannel, publishErr := broker.connection.Channel()
 
 		if publishErr != nil {
+			localHub.CaptureException(publishErr)
 			println("[batchbable] could not create publisher channel")
 			os.Exit(1)
 		}
@@ -97,7 +117,10 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		broker.consumeChannel = consumeChannel
 		broker.publishChannel = publishChannel
 
-		broker.Start()
+		startErr := broker.Start()
+		if startErr != nil {
+			localHub.CaptureException(startErr)
+		}
 
 		// Notify the connectedChan channel, that a connection has been successfully established
 		connected <- true
@@ -125,7 +148,7 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	return <-connectedChan
 }
 
-func (broker *AMQPBroker) Evacuate() error {
+func (broker *AMQPBroker) Evacuate() {
 
 	broker.jobManifest.Mutex.RLock()
 	defer broker.jobManifest.Mutex.RUnlock()
@@ -135,7 +158,7 @@ func (broker *AMQPBroker) Evacuate() error {
 		jobData := job.Message.GetData()
 
 		println("[batchbable] evacuating job", ID, jobData)
-		broker.publishChannel.Publish(
+		err := broker.publishChannel.Publish(
 			"",
 			broker.config.BrokerSubject,
 			false,
@@ -143,18 +166,29 @@ func (broker *AMQPBroker) Evacuate() error {
 			amqp.Publishing{
 				ContentType: "application/json",
 				Body:        jobData,
-			})
+			},
+		)
+
+		if err != nil {
+			sentry.CaptureException(err)
+		}
 	}
 
 	println("[batchbable] evacuated jobs")
-	return nil
 }
 
 // Teardown the natsshim connection and all natsshim services
 func (broker *AMQPBroker) Teardown() {
 	println("[batchable] tearing down broker")
-	broker.consumeChannel.Cancel(broker.config.WorkerID, false)
-	broker.connection.Close()
+	cancelErr := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
+	if cancelErr != nil {
+		sentry.CaptureException(cancelErr)
+	}
+
+	closeErr := broker.connection.Close()
+	if closeErr != nil {
+		sentry.CaptureException(closeErr)
+	}
 }
 
 func (broker *AMQPBroker) IsRunning() bool {
@@ -190,17 +224,12 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	}
 
 	// Insert new into queue
-	insertErr := broker.jobManifest.InsertJob(
+	broker.jobManifest.InsertJob(
 		eventID,
 		AmqpMessageWrapper{
 			msg,
 		},
 	)
-
-	if insertErr != nil {
-		broker.jobManifest.Mutex.Unlock()
-		return insertErr
-	}
 
 	// Stop broker when the job manifest size reaches max concurrency
 	stopBroker := broker.jobManifest.Size() >= broker.config.MaxConcurrency
@@ -229,12 +258,8 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 			return nil
 		}
 
-		delError := broker.jobManifest.DeleteJob(eventID)
+		broker.jobManifest.DeleteJob(eventID)
 		broker.jobManifest.Mutex.Unlock()
-
-		if delError != nil {
-			println(delError.Error())
-		}
 
 		// Negative acknowlege and reschedule job for a different worker to handle
 		// since the workload on this instance seems to not be working
@@ -260,7 +285,7 @@ func (broker *AMQPBroker) Start() error {
 	defer broker.busy.Unlock()
 
 	if broker.running {
-		return errors.New("broker is already running")
+		return nil
 	}
 
 	messages, err := broker.consumeChannel.Consume(
@@ -280,14 +305,15 @@ func (broker *AMQPBroker) Start() error {
 
 	broker.running = true
 
-	go func() {
+	go func(localHub *sentry.Hub) {
 		for d := range messages {
 			err := broker.messageHandler(d)
 			if err != nil {
+				localHub.CaptureException(err)
 				println(err.Error())
 			}
 		}
-	}()
+	}(sentry.CurrentHub().Clone())
 
 	return nil
 }
@@ -297,7 +323,7 @@ func (broker *AMQPBroker) Stop() error {
 	defer broker.busy.Unlock()
 
 	if !broker.running {
-		return errors.New("broker is already stopped")
+		return nil
 	}
 
 	err := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
@@ -330,8 +356,8 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 		})
 
 	if err != nil {
-		println("[batchable] Could not Publish result", err.Error())
-		return errors.New("Could not Publish result: " + string(encodedData))
+		println("[batchable] Could not Publish result", err.Error(), string(encodedData))
+		return err
 	}
 	return nil
 }
