@@ -22,7 +22,7 @@ for await (const req of s) {
     } catch (e) {
       console.log(e);
     }
-  }, Math.random() * 300000)
+  }, Math.random() * 0)
 
 
 }
