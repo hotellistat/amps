@@ -57,24 +57,36 @@ func Run(conf *config.Config) {
 		batchableServer := http.NewServeMux()
 
 		// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-		batchableServer.HandleFunc("/complete", func(w http.ResponseWriter, req *http.Request) {
+		batchableServer.HandleFunc("/acknowledge", func(w http.ResponseWriter, req *http.Request) {
 			if req.Method != "POST" {
 				fmt.Fprintf(w, "Only POST is allowed")
 				return
 			}
-			err := JobComplete(w, req, conf, &jobManifest, &broker)
+			err := JobAcknowledge(w, req, conf, &jobManifest, &broker)
 			if err != nil {
 				localHub.CaptureException(err)
 			}
 		})
 
 		// This endpoint handles job deletion
-		batchableServer.HandleFunc("/delete", func(w http.ResponseWriter, req *http.Request) {
+		batchableServer.HandleFunc("/reject", func(w http.ResponseWriter, req *http.Request) {
 			if req.Method != "POST" {
 				fmt.Fprintf(w, "Only POST is allowed")
 				return
 			}
-			err := JobDelete(w, req, conf, &jobManifest, &broker)
+			err := JobReject(w, req, conf, &jobManifest, &broker)
+			if err != nil {
+				localHub.CaptureException(err)
+			}
+		})
+
+		// This endpoint handles job deletion
+		batchableServer.HandleFunc("/publish", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != "POST" {
+				fmt.Fprintf(w, "Only POST is allowed")
+				return
+			}
+			err := JobPublish(w, req, conf, &jobManifest, &broker)
 			if err != nil {
 				localHub.CaptureException(err)
 			}

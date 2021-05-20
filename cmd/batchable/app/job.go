@@ -14,7 +14,7 @@ import (
 )
 
 // JobCheckout is executed when a workload finishes a job, and registers it as completed
-func JobComplete(
+func JobPublish(
 	w http.ResponseWriter,
 	req *http.Request,
 	conf *config.Config,
@@ -40,27 +40,56 @@ func JobComplete(
 		return err
 	}
 
-	eventID := event.Context.GetID()
+	publishErr := (*broker).PublishMessage(event)
+	if publishErr != nil {
+		println("[batchable] Could not publish event to broker", publishErr.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not publish your event to the broker"))
+		return publishErr
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("OK"))
+	return nil
+}
+
+type JobSchema struct {
+	Identifier string
+}
+
+// JobCheckout is executed when a workload finishes a job, and registers it as completed
+func JobAcknowledge(
+	w http.ResponseWriter,
+	req *http.Request,
+	conf *config.Config,
+	jobManifest *job.Manifest,
+	broker *broker.Shim) error {
+
+	var job JobSchema
+
+	err := json.NewDecoder(req.Body).Decode(&job)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return err
+	}
 
 	jobManifest.Mutex.Lock()
 
-	// Return if job does not exist in the job manifest
-	if !jobManifest.HasJob(eventID) {
+	// Check if job exists in the manifest
+	if !jobManifest.HasJob(job.Identifier) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Could not publish your event to the broker. Job may have timed out."))
-		println("[batchable] Job ID:", eventID, "does not exists anymore. Publishing blocked.")
-		return errors.New("Job ID: " + eventID + " does not exists in the manifest")
+		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
+		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
+		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
 	}
 
 	// Fetch the nopublish event context extension. This will prevent publishing
 	// the recieved event to our broker. This is normally used,
 	// if you want to define the end of a chain of workloads where the last
 	// link of the chain should not create any new events in the broker anymore
-	nopublish, _ := event.Context.GetExtension("nopublish")
-
-	jobManifest.DeleteJob(eventID)
-
+	jobManifest.DeleteJob(job.Identifier)
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
 
@@ -71,36 +100,19 @@ func JobComplete(
 		}
 	}
 
-	if nopublish != true {
-		if conf.Debug {
-			println("[batchable] Publishing recieved event to broker")
-		}
-		publishErr := (*broker).PublishMessage(event)
-		if publishErr != nil {
-			println("[batchable] Could not publish event to broker", publishErr.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Could not publish your event to the broker"))
-			return publishErr
-		}
-	}
-
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
 	return nil
 }
 
-type JobDeleteSchema struct {
-	Identifier string
-}
-
-func JobDelete(
+func JobReject(
 	w http.ResponseWriter,
 	req *http.Request,
 	conf *config.Config,
 	jobManifest *job.Manifest,
 	broker *broker.Shim) error {
 
-	var job JobDeleteSchema
+	var job JobSchema
 
 	err := json.NewDecoder(req.Body).Decode(&job)
 
