@@ -11,6 +11,23 @@ import (
 	"net/http"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	workloadsAcknowledged = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "batchable_workloads_acknowledged_total",
+		Help: "The total number of workloads job acknoldegdenemts. This means that a workload has successfully completed a job.",
+	})
+	workloadsRejected = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "batchable_workloads_rejected_total",
+		Help: "The total number of workloads job rejections. This means that a workload has crashed or has thrown an exception notified the batchable container of an unsuccessful job completion.",
+	})
+	workloadsPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "batchable_workloads_published_total",
+		Help: "The total number of message publishings that were triggered by a workload.",
+	})
 )
 
 // JobCheckout is executed when a workload finishes a job, and registers it as completed
@@ -40,6 +57,9 @@ func JobPublish(
 		return err
 	}
 
+	eventID := event.ID()
+	println("[batchable] Publishing Job:", eventID)
+
 	publishErr := (*broker).PublishMessage(event)
 	if publishErr != nil {
 		println("[batchable] Could not publish event to broker", publishErr.Error())
@@ -48,6 +68,7 @@ func JobPublish(
 		return publishErr
 	}
 
+	workloadsPublished.Inc()
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
 	return nil
@@ -90,6 +111,7 @@ func JobAcknowledge(
 	// if you want to define the end of a chain of workloads where the last
 	// link of the chain should not create any new events in the broker anymore
 	jobManifest.DeleteJob(job.Identifier)
+	workloadsAcknowledged.Inc()
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
 
@@ -137,6 +159,7 @@ func JobReject(
 	// if you want to define the end of a chain of workloads where the last
 	// link of the chain should not create any new events in the broker anymore
 	jobManifest.DeleteJob(job.Identifier)
+	workloadsRejected.Inc()
 	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
 
