@@ -7,12 +7,12 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cloudevents/sdk-go/v2/event"
+	cloudeventSdk "github.com/cloudevents/sdk-go/v2/event"
 )
 
 // TriggerWorkload sends a HTTP request to the sibling workload on every new broker job
 func Trigger(
-	event event.Event,
+	event cloudeventSdk.Event,
 	conf config.Config) error {
 
 	eventData, err := json.Marshal(event)
