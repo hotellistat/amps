@@ -1,32 +1,29 @@
 
-![](assets/hero.png)
-# Batchable
-
+![](assets/repository-hero.png)
 ## Prolog
 
 Batchable arose from our necessity to dynamically scale asynchronous worker queue jobs
-and enabling those workers to work on several jobs in the same container in parallel.
+and enabling workers to process several jobs in the same container in parallel.
+We chose his architecture to have instantaneous worker startup times for a specific maximum amount of parallel jobs without having to wait for a cold start of a container.
 
-Batchable represents a sidecar container that subscribes to a queue such as NATS and consumes
-messages from that queue, until the max concurrency limit is met. Upon receiving a message, Batchable
-will send a HTTP request to the workload container, which will acknowledge that it has received the job.
+Batchable represents a sidecar container that subscribes to a queue such as RabbitMQ and consumes
+messages from it, until the max concurrency limit is met. Upon receiving a message, Batchable
+will send a HTTP request to the workload container, which will acknowledge that it has received the job by just simply sending back a valid HTTP response code.
 The workload can then asynchronously work on that message within the workload timeout.
-Upon successful completion of the workload, it will send a `checkout` HTTP request back to the Batchable
-sidecar container to finalize the Job completion.
+Upon successful completion of the workload, it will send a `acknowldedge` HTTP request back to the Batchable
+sidecar container to finalize the Job completion. A workload can also send back a `reject` request, letting the batchable container know, that the job could not successfully be processes.
+Furthermore, the batchable container allows publishing of new jobs through its `pushlish` endpoint, enabling yoru to chain several batchable containers together.
 
-Since Batchable holds an internal state of which job is currently worked on, it knows how to handle and how to timeout
-concurrently running jobs.
+Since Batchable holds an internal state of which job is currently worked on, it knows how to handle and how to timeout concurrently running jobs.
 
-Batchable is supposed to do one job well, and one job only. Other solutions such as OpenFaaS tried to support more and more features
-as they progressed, resulting in loads of complexity and inefficiencies.
-Batchable is supposed to be as configurable as possible to adapt to your needs.
+**Note:** Batchable is supposed to do one job well, and one job only. Other popular FaaS-like projects have often seen a huge amount of feature creep over the years, making them outdated, fragile and inefficient.
 
 ### Why use HTTP for your workload?
 
 We chose HTTP as a simple method to convey a job to the workload without the workload having to use any special libraries,
-other than a HTTP server. HTTP also gives us the native ability to run processes/workload in parallel, without having to do
-any process handling on the development side. This pattern is well established in the FaaS community, and thus is the reasonable
-choice for this kind of application.
+other than a HTTP server. HTTP also gives us the native ability to run processes/workloads in parallel, without having to do
+any custom process handling on the development side, which of course you can still do if needed.
+This pattern is well established in the FaaS community, and thus is the reasonable choice for this kind of application.
 
 ### Job message structure
 
@@ -34,20 +31,19 @@ Batchable is built, such that it always expects a CloudEvent formatted message b
 and all queue messages should be formatted accordingly.
 
 Batchable also conveys this CloudEvent to the Workload by the **structured content mode**.
-This means, that it will pack the whole CloudEvent into a JSON and pass it to the workload with the `Content-Type: application/json` header.
+This means, that it will pack the whole CloudEvent into a JSON and `POST` it to the workload with the `Content-Type: application/json` header.
 
 ### Kubernetes
 
 This container is primarily designed to work in a Kubernetes environment. We can't ensure, that this container will work with other
-systems such as OpenStack, ECS, etc.
+systems such as OpenStack, ECS, etc., although it should be easily possible.
 
 ### Scalability
 
-Batchable does not support scaling up and down _at the moment_. To scale Batchable-Workload Pods you will need to choose your own
-scaling solution. We have had great success with using [KEDA](https://keda.sh/).
+Batchable does not support scaling up and down by itself _at the moment_. To scale Batchable-Workload Pods you will need to choose your own
+scaling solution. We have had great success with using [KEDA](https://keda.sh/) or the HorizontalPodAutoscaler in Kubernetes.
 
-Scaling always depends on your specific needs, thus building our own scaling solution for Batchable wouldn't cover all use cases,
-thus restricting the application usability.
+Scaling always depends on your specific needs, thus implementing a native scaling solution for Batchable would never cover all use cases. We encourage you to build your own autoscaling system, a are open for any features you wish to see implemented. Sind we do take care, that the architecture of the project is a modular as possible, it may be possible to build a dynamic autoscaling solution architecture. Stay tuned for RFCs.
 
 ## Getting started
 
