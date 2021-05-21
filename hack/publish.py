@@ -16,7 +16,7 @@ channel = connection.channel()
 for i in range(1):
     message = {
         "specversion": "1.0",
-        "type": "com.hotellistat.scraping",
+        "type": "com.hotellistat.scraping.synxis.apisession",
         "id": str(uuid.uuid4()),
         "source": "testing",
         "nopublish": True,
@@ -25,7 +25,7 @@ for i in range(1):
             "group": str(uuid.uuid4()),
             "id_ota": 1,
             "id_hotel": 2074,
-            "hotel_ota_id": "de/kemnater-hof.de.html",
+            "hotel_ota_id": "58053",
             "crawl_date": "2021-05-19",
             "days_to_crawl": 2,
             "length_of_stay": 1,
@@ -54,7 +54,7 @@ for i in range(1):
         properties=pika.BasicProperties(
             delivery_mode=2,
         ),
-        routing_key='com.hotellistat.scraping',
+        routing_key='com.hotellistat.scraping.synxis.apisession',
         body=json.dumps(message)
     )
 
