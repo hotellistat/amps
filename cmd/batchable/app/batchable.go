@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -40,7 +41,7 @@ func Run(conf *config.Config) {
 	broker.Initialize(*conf, &jobManifest)
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
-	if conf.JobTimeout != 0 {
+	if conf.JobTimeout > 0 {
 		tickInterval, _ := time.ParseDuration("1000ms")
 		ticker := time.NewTicker(tickInterval)
 
@@ -53,11 +54,14 @@ func Run(conf *config.Config) {
 		go http.ListenAndServe(fmt.Sprint(":", conf.MetricsPort), metricsServer)
 	}
 
-	go func(localHub *sentry.Hub) {
+	go func() {
 		batchableServer := http.NewServeMux()
+		sentryHandler := sentryhttp.New(sentryhttp.Options{})
 
 		// This endpoint is the checkout endpoint, where workloads can notify nats, that they have finished
-		batchableServer.HandleFunc("/acknowledge", func(w http.ResponseWriter, req *http.Request) {
+		batchableServer.HandleFunc("/acknowledge", sentryHandler.HandleFunc(func(w http.ResponseWriter, req *http.Request) {
+			localHub := sentry.GetHubFromContext(req.Context())
+
 			if req.Method != "POST" {
 				fmt.Fprintf(w, "Only POST is allowed")
 				return
@@ -66,10 +70,11 @@ func Run(conf *config.Config) {
 			if err != nil {
 				localHub.CaptureException(err)
 			}
-		})
+		}))
 
 		// This endpoint handles job deletion
-		batchableServer.HandleFunc("/reject", func(w http.ResponseWriter, req *http.Request) {
+		batchableServer.HandleFunc("/reject", sentryHandler.HandleFunc(func(w http.ResponseWriter, req *http.Request) {
+			localHub := sentry.GetHubFromContext(req.Context())
 			if req.Method != "POST" {
 				fmt.Fprintf(w, "Only POST is allowed")
 				return
@@ -78,10 +83,11 @@ func Run(conf *config.Config) {
 			if err != nil {
 				localHub.CaptureException(err)
 			}
-		})
+		}))
 
 		// This endpoint handles job deletion
-		batchableServer.HandleFunc("/publish", func(w http.ResponseWriter, req *http.Request) {
+		batchableServer.HandleFunc("/publish", sentryHandler.HandleFunc(func(w http.ResponseWriter, req *http.Request) {
+			localHub := sentry.GetHubFromContext(req.Context())
 			if req.Method != "POST" {
 				fmt.Fprintf(w, "Only POST is allowed")
 				return
@@ -90,7 +96,7 @@ func Run(conf *config.Config) {
 			if err != nil {
 				localHub.CaptureException(err)
 			}
-		})
+		}))
 
 		// Health check so the container can be killed if unhealthy
 		batchableServer.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
@@ -106,7 +112,7 @@ func Run(conf *config.Config) {
 
 		http.ListenAndServe(fmt.Sprint(":", conf.Port), batchableServer)
 
-	}(sentry.CurrentHub().Clone())
+	}()
 
 	// General signal handling to teardown the worker
 	signalChan := make(chan os.Signal, 1)

@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -37,8 +36,6 @@ func JobPublish(
 	conf *config.Config,
 	jobManifest *job.Manifest,
 	broker *broker.Shim) error {
-
-	event := cloudevents.NewEvent()
 
 	body, readErr := ioutil.ReadAll(req.Body)
 
