@@ -10,9 +10,9 @@ Batchable represents a sidecar container that subscribes to a queue such as Rabb
 messages from it, until the max concurrency limit is met. Upon receiving a message, Batchable
 will send a HTTP request to the workload container, which will acknowledge that it has received the job by just simply sending back a valid HTTP response code.
 The workload can then asynchronously work on that message within the workload timeout.
-Upon successful completion of the workload, it will send a `acknowldedge` HTTP request back to the Batchable
-sidecar container to finalize the Job completion. A workload can also send back a `reject` request, letting the batchable container know, that the job could not successfully be processes.
-Furthermore, the batchable container allows publishing of new jobs through its `pushlish` endpoint, enabling yoru to chain several batchable containers together.
+Upon successful completion of the workload, it will send a `acknowledge` HTTP request back to the Batchable
+sidecar container to finalize the Job completion. A workload can also send back a `reject` request, letting the Batchable container know, that the job could not successfully be processes.
+Furthermore, the Batchable container allows publishing of new jobs through its `publish` endpoint, enabling you to chain several Batchable containers together.
 
 Since Batchable holds an internal state of which job is currently worked on, it knows how to handle and how to timeout concurrently running jobs.
 
@@ -27,7 +27,7 @@ This pattern is well established in the FaaS community, and thus is the reasonab
 
 ### Job message structure
 
-Batchable is built, such that it always expects a CloudEvent formatted message body. The specversion is currently set to `1.0.0`
+Batchable is built, such that it always expects a CloudEvent formatted message body. The spec-version is currently set to `1.0.0`
 and all queue messages should be formatted accordingly.
 
 Batchable also conveys this CloudEvent to the Workload by the **structured content mode**.
@@ -43,7 +43,7 @@ systems such as OpenStack, ECS, etc., although it should be easily possible.
 Batchable does not support scaling up and down by itself _at the moment_. To scale Batchable-Workload Pods you will need to choose your own
 scaling solution. We have had great success with using [KEDA](https://keda.sh/) or the HorizontalPodAutoscaler in Kubernetes.
 
-Scaling always depends on your specific needs, thus implementing a native scaling solution for Batchable would never cover all use cases. We encourage you to build your own autoscaling system, a are open for any features you wish to see implemented. Sind we do take care, that the architecture of the project is a modular as possible, it may be possible to build a dynamic autoscaling solution architecture. Stay tuned for RFCs.
+Scaling always depends on your specific needs, thus implementing a native scaling solution for Batchable would never cover all use cases. We encourage you to build your own autoscaling system and are open for any features you wish to see implemented. Since we do take care, that the architecture of the project is a modular as possible, it may be possible to build a dynamic autoscaling solution architecture thad does not interfere with the core logic of the container. Stay tuned for RFCs.
 
 ## Getting started
 
@@ -102,8 +102,8 @@ spec:
         # This container represents your workload.
         # The workload has to have a HTTP server running on the defined port
         # as configured in the "WORKLOAD_ADDRESS" environment variable
-        # (WORKLOAD_ADDRESS env config in the batchable container)
-        # for the batchable container to be able to send new messages to the workload.
+        # (WORKLOAD_ADDRESS env config in the Batchable container)
+        # for the Batchable container to be able to send new messages to the workload.
         - name: workload
           image: alpine
           ports:
