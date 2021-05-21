@@ -1,3 +1,4 @@
 dist
 .so
 /.env
+*.private.py

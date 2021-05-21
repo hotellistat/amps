@@ -1,3 +1,5 @@
+
+![](assets/hero.png)
 # Batchable
 
 ## Prolog
@@ -55,19 +57,19 @@ As an example we'll show you how you can use this container as a Sidecar contain
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourworkername
+  name: your-deployment-name
   labels:
-    app: yourworkername
+    app: your-deployment-name
 spec:
   # Scale your worker initially
   replicas: 10
   selector:
     matchLabels:
-      app: yourworkername
+      app: your-deployment-name
   template:
     metadata:
       labels:
-        app: yourworkername
+        app: your-deployment-name
     spec:
       # Create the Batchable sidecar container
       containers:
@@ -89,17 +91,11 @@ spec:
           # Have a look at /cmd/config/config.go for further configuration details
           env:
             - name: BROKER_HOST
-              value: "nats.messaging:4222"
-            - name: BROKER_CLUSTER
-              value: nats
+              value: "amqp://username:password@rabbitmq:5672"
             - name: BROKER_SUBJECT
-              value: com.hotellistat.yourworkername
-            - name: BROKER_DURABLE_GROUP
-              value: com.hotellistat.yourworkername
-            - name: BROKER_QUEUE_GROUP
-              value: com.hotellistat.yourworkername
+              value: com.yourorg.some-message-queue
             - name: JOB_TIMEOUT
-              value: "6h"
+              value: "1h"
             - name: DEBUG
               value: "true"
             - name: MAX_CONCURRENCY
@@ -108,7 +104,8 @@ spec:
               value: "http://localhost:80"
 
         # This container represents your workload.
-        # The workload has to have a HTTP server running on port 80
+        # The workload has to have a HTTP server running on the defined port
+        # as configured in the "WORKLOAD_ADDRESS" environment variable
         # (WORKLOAD_ADDRESS env config in the batchable container)
         # for the batchable container to be able to send new messages to the workload.
         - name: workload
@@ -117,14 +114,16 @@ spec:
             - containerPort: 80
 ```
 
-This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod template.
+This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod/Deployment template.
 
 ## Development
 
 Developing Batchable is a simple as it gets. Follow these steps:
 
 1. Copy the `.env.template` file and rename it to `.env`
-2. Launch a local NATS server
+2. Set the `.env` environment variables to your specification (have a look into [`cmd/batchable/config/config.go`](/cmd/batchable/config/config.go) for further configuration settings)
+3. Launch a local RabbitMQ server (`docker-compose up rabbitmq`)
+4. Launch the test webserver in the hack folder (`make server`)
 3. Configure the environment variables in the `.env` for your system
 4. Run `make dev`
 
@@ -132,11 +131,11 @@ The application should just start up and listen for any new messages in the mess
 
 ## TODO
 
-- [ ] Support RabbitMQ
+- [x] Support RabbitMQ
 - [ ] Full unit tests
 - [ ] Add full testing pipeline
 - [ ] End to End tests
-- [ ] Prometheus metrics endpoint
+- [x] Prometheus metrics endpoint
 - [ ] Synchronous mode (FaaS)
-- [ ] Configuration should support multiple message brokers
+- [x] Configuration should support multiple message brokers
 - [ ] Parallel subscriptions
