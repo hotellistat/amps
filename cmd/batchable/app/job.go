@@ -72,7 +72,8 @@ func JobPublish(
 }
 
 type JobSchema struct {
-	Identifier string
+	Identifier string `json:"identifier"`
+	Reschedule bool   `json:"reschedule,omitempty"`
 }
 
 // JobCheckout is executed when a workload finishes a job, and registers it as completed
@@ -83,7 +84,9 @@ func JobAcknowledge(
 	jobManifest *job.Manifest,
 	broker *broker.Shim) error {
 
-	var job JobSchema
+	job := JobSchema{
+		Reschedule: false,
+	}
 
 	err := json.NewDecoder(req.Body).Decode(&job)
 
@@ -101,6 +104,12 @@ func JobAcknowledge(
 		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
 		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
 		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
+	}
+
+	if job.Reschedule {
+		jobMessage := jobManifest.GetJob(job.Identifier)
+		newEvent, _ := cloudevent.Unmarshal(jobMessage.Message.GetData())
+		go (*broker).PublishMessage(newEvent)
 	}
 
 	// Fetch the nopublish event context extension. This will prevent publishing
@@ -131,7 +140,9 @@ func JobReject(
 	jobManifest *job.Manifest,
 	broker *broker.Shim) error {
 
-	var job JobSchema
+	job := JobSchema{
+		Reschedule: false,
+	}
 
 	err := json.NewDecoder(req.Body).Decode(&job)
 
@@ -149,6 +160,12 @@ func JobReject(
 		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
 		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
 		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
+	}
+
+	if job.Reschedule {
+		jobMessage := jobManifest.GetJob(job.Identifier)
+		newEvent, _ := cloudevent.Unmarshal(jobMessage.Message.GetData())
+		go (*broker).PublishMessage(newEvent)
 	}
 
 	// Fetch the nopublish event context extension. This will prevent publishing

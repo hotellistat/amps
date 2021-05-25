@@ -63,6 +63,12 @@ func (jm *Manifest) HasJob(ID string) bool {
 	return exists
 }
 
+// GetJob fetches a job by its ID
+func (jm *Manifest) GetJob(ID string) Job {
+	job := jm.Jobs[ID]
+	return job
+}
+
 // InsertJob inserts a new job and checks that there are no duplicates
 func (jm *Manifest) InsertJob(ID string, message Message) {
 	messagesInserted.Inc()
