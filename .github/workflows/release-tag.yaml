@@ -1,7 +1,7 @@
 name: Publish app
 on:
   push:
-    branches:
+    tags:
       - main
   workflow_dispatch:
 jobs:
@@ -19,6 +19,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build and Push
+        id: docker_build
         uses: docker/build-push-action@v2
         with:
           context: .
@@ -28,15 +29,3 @@ jobs:
           tags: |
             registry.hotellistat.com/oss/amps:latest
             registry.hotellistat.com/oss/amps:${{ github.sha }}
-
-      - name: Build and Push tag
-        uses: docker/build-push-action@v2
-        if: startsWith(github.event.ref, 'refs/tags/v')
-        with:
-          context: .
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: |
-            registry.hotellistat.com/oss/amps:latest
-            registry.hotellistat.com/oss/amps:${{ github.ref_name }}
