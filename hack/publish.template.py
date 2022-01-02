@@ -17,7 +17,7 @@ for i in range(1):
         "specversion": "1.0",
         "type": "com.yourorg.some-queue",
         "id": str(uuid.uuid4()),
-        "source": "batchable-development",
+        "source": "amps-development",
         "data": {
             "key": "value"
         }

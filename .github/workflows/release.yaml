@@ -18,12 +18,6 @@ jobs:
           username: ${{ secrets.REGISTRY_USER }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - id: image-tag
-        run: |
-          sha="${{ github.sha }}"
-          id="${sha:0:8}"
-          echo "::set-output name=id::$id"
-
       - name: Build and Push
         id: docker_build
         uses: docker/build-push-action@v2
@@ -32,4 +26,6 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: registry.hotellistat.com/oss/batchable:latest,registry.hotellistat.com/oss/batchable:${{steps.image-tag.outputs.id}}
+          tags: |
+            registry.hotellistat.com/oss/amps:latest
+            registry.hotellistat.com/oss/amps:${{ github.sha }}

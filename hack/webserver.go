@@ -1,13 +1,14 @@
 package main
 
 import (
-	"batchable/cmd/batchable/cloudevent"
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
 
 	"net/http"
 	"time"
+
+	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
 )
 
 func main() {

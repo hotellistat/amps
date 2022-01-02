@@ -1,13 +1,13 @@
 package test
 
 import (
-	"batchable/cmd/batchable/broker"
-	"batchable/cmd/batchable/config"
-	"batchable/cmd/batchable/job"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/hotellistat/AMPS/cmd/amps/broker"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/AMPS/cmd/amps/job"
 	"github.com/joho/godotenv"
 	"github.com/streadway/amqp"
 )

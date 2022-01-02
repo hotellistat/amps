@@ -5,11 +5,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Batchable",
+      "name": "AMPS",
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "program": "${workspaceFolder}/cmd/batchable/batchable.go",
+      "program": "${workspaceFolder}/cmd/amps/amps.go",
       "envFile": "${workspaceFolder}/.env"
     }
   ]

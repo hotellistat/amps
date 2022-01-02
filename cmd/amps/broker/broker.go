@@ -1,10 +1,9 @@
 package broker
 
 import (
-	"batchable/cmd/batchable/config"
-	"batchable/cmd/batchable/job"
-
 	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/AMPS/cmd/amps/job"
 )
 
 type Shim interface {

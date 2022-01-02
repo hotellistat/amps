@@ -1,13 +1,13 @@
 package app
 
 import (
-	"batchable/cmd/batchable/broker"
-	"batchable/cmd/batchable/config"
-	"batchable/cmd/batchable/job"
 	"sync"
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/hotellistat/AMPS/cmd/amps/broker"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/AMPS/cmd/amps/job"
 )
 
 // Watchdog is a goroutine that takes care of job timeouts and general state management
@@ -27,7 +27,7 @@ func Watchdog(
 		jobManifest.Mutex.Lock()
 		for ID, jobItem := range jobManifest.Jobs {
 			if time.Since(jobItem.Created) > conf.JobTimeout {
-				println("[batchable] Job ID:", ID, "timed out")
+				println("[AMPS] Job ID:", ID, "timed out")
 				jobManifest.DeleteJob(ID)
 			}
 		}

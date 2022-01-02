@@ -10,19 +10,19 @@ import (
 
 var (
 	messagesInserted = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "batchable_messages_inserted_total",
+		Name: "amps_messages_inserted_total",
 		Help: "The total number of inserted messages from the broker",
 	})
 	messagesDeleted = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "batchable_messages_deleted_total",
+		Name: "amps_messages_deleted_total",
 		Help: "The total number of inserted messages from the broker",
 	})
 	currentJobCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "batchable_messages_count",
+		Name: "amps_messages_count",
 		Help: "The total number of inserted messages from the broker",
 	})
 	messageLifetime = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "batchable_message_lifetime_seconds",
+		Name:    "amps_message_lifetime_seconds",
 		Help:    "The total number of inserted messages from the broker",
 		Buckets: prometheus.LinearBuckets(0, 300, 60),
 	})
@@ -85,7 +85,7 @@ func (jm *Manifest) InsertJob(ID string, message Message) {
 func (jm *Manifest) DeleteJob(ID string) {
 	messagesDeleted.Inc()
 
-	println("[batchable] Deleting Job ID:", ID)
+	println("[AMPS] Deleting Job ID:", ID)
 
 	job := jm.Jobs[ID]
 

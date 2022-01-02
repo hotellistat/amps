@@ -11,15 +11,15 @@ type exitCallback func(code int)
 
 // Config represents the global configuation for this project
 type Config struct {
-	Version                 string        `description:"The batchable container version"`
+	Version                 string        `description:"The AMPS container version"`
 	BrokerType              string        `description:"The broker type you want to use, currently only 'amqp' is supported"`
 	BrokerDsn               string        `description:"The brokers' connection DSN. This should hold the broker endpoint aswell as authentication values"`
-	BrokerSubject           string        `description:"The broker subject on which batchable container should listen to"`
-	WorkerID                string        `description:"The workers' ID. This has to be unique across all your batchable containers"`
-	Port                    int           `description:"The port on which the batchable container HTTP server should be reachable"`
+	BrokerSubject           string        `description:"The broker subject on which AMPS container should listen to"`
+	WorkerID                string        `description:"The workers' ID. This has to be unique across all your AMPS containers"`
+	Port                    int           `description:"The port on which the AMPS container HTTP server should be reachable"`
 	Debug                   bool          `description:"Enable debug mode for verbose output"`
 	SentryDsn               string        `description:"The Sentry DSN enpoint to send error logs to"`
-	Environment             string        `description:"The in which the batchable container is running"`
+	Environment             string        `description:"The in which the AMPS container is running"`
 	MetricsEnabled          bool          `description:"Enable the prometheus metrics exporter"`
 	MetricsPort             int           `description:"The prometheus metrics exported port"`
 	MaxConcurrency          int           `description:"The maximum amount of jobs that can run concurrently"`
@@ -34,7 +34,7 @@ func New() *Config {
 	workerID, _ := os.Hostname()
 
 	return &Config{
-		Version:                 GetEnv("BATCHABLE_VERSION", "master"),
+		Version:                 GetEnv("AMPS_VERSION", "master"),
 		BrokerType:              GetEnv("BROKER_TYPE", "amqp"),
 		BrokerDsn:               GetEnv("BROKER_HOST", "amqp://localhost:5672"),
 		BrokerSubject:           GetEnvRequired("BROKER_SUBJECT", func(code int) { os.Exit(code) }),
@@ -65,7 +65,7 @@ func GetEnv(key string, defaultVal string) string {
 func GetEnvRequired(key string, exit exitCallback) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		println("[batchable] The environment variable:", key, "is required and has to be set")
+		println("[AMPS] The environment variable:", key, "is required and has to be set")
 		exit(1)
 	}
 

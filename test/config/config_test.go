@@ -1,10 +1,11 @@
 package test
 
 import (
-	"batchable/cmd/batchable/config"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/hotellistat/AMPS/cmd/amps/config"
 )
 
 func TestGetEnv(t *testing.T) {

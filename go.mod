@@ -1,4 +1,4 @@
-module batchable
+module github.com/hotellistat/AMPS
 
 go 1.15
 

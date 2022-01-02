@@ -1,10 +1,10 @@
 package test
 
 import (
-	"batchable/cmd/batchable/cloudevent"
 	"strings"
 	"testing"
 
+	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
 	"github.com/joho/godotenv"
 )
 

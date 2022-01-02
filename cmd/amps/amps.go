@@ -1,12 +1,12 @@
 package main
 
 import (
-	"batchable/cmd/batchable/app"
-	"batchable/cmd/batchable/config"
 	"log"
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/hotellistat/AMPS/cmd/amps/app"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
 	"github.com/joho/godotenv"
 )
 
@@ -18,7 +18,7 @@ func main() {
 		err := sentry.Init(sentry.ClientOptions{
 			Dsn:         conf.SentryDsn,
 			Environment: conf.Environment,
-			Release:     "batchable@" + conf.Version,
+			Release:     "AMPS@" + conf.Version,
 			Debug:       true,
 		})
 

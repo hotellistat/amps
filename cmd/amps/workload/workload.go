@@ -1,13 +1,13 @@
 package workload
 
 import (
-	"batchable/cmd/batchable/config"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 
 	cloudeventSdk "github.com/cloudevents/sdk-go/v2/event"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
 )
 
 // TriggerWorkload sends a HTTP request to the sibling workload on every new broker job
@@ -32,7 +32,7 @@ func Trigger(
 
 	resp.Body.Close()
 
-	println("[batchable] status code", resp.StatusCode)
+	println("[AMPS] status code", resp.StatusCode)
 
 	return nil
 }

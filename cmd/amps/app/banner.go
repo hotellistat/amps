@@ -1,16 +1,16 @@
 package app
 
 import (
-	"batchable/cmd/batchable/config"
 	"os"
 	"reflect"
 
 	"github.com/common-nighthawk/go-figure"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 func printBanner(conf config.Config) {
-	myFigure := figure.NewFigure("batchable", "", true)
+	myFigure := figure.NewFigure("AMPS", "", true)
 	myFigure.Print()
 
 	print("\n")

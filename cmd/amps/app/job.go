@@ -1,30 +1,30 @@
 package app
 
 import (
-	"batchable/cmd/batchable/broker"
-	"batchable/cmd/batchable/cloudevent"
-	"batchable/cmd/batchable/config"
-	"batchable/cmd/batchable/job"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"net/http"
 
+	"github.com/hotellistat/AMPS/cmd/amps/broker"
+	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/AMPS/cmd/amps/job"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
 	workloadsAcknowledged = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "batchable_workloads_acknowledged_total",
+		Name: "amps_workloads_acknowledged_total",
 		Help: "The total number of workloads job acknoldegdenemts. This means that a workload has successfully completed a job.",
 	})
 	workloadsRejected = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "batchable_workloads_rejected_total",
-		Help: "The total number of workloads job rejections. This means that a workload has crashed or has thrown an exception notified the batchable container of an unsuccessful job completion.",
+		Name: "amps_workloads_rejected_total",
+		Help: "The total number of workloads job rejections. This means that a workload has crashed or has thrown an exception notified the amps container of an unsuccessful job completion.",
 	})
 	workloadsPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "batchable_workloads_published_total",
+		Name: "amps_workloads_published_total",
 		Help: "The total number of message publishings that were triggered by a workload.",
 	})
 )
@@ -48,18 +48,18 @@ func JobPublish(
 	event, err := cloudevent.Unmarshal(body)
 
 	if err != nil {
-		println("[batchable]", err.Error())
+		println("[AMPS]", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Can not unmarshal cloudevent, make sure you send a cloudevent in structured content mode"))
 		return err
 	}
 
 	eventID := event.ID()
-	println("[batchable] Publishing Job:", eventID)
+	println("[AMPS] Publishing Job:", eventID)
 
 	publishErr := (*broker).PublishMessage(event)
 	if publishErr != nil {
-		println("[batchable] Could not publish event to broker", publishErr.Error())
+		println("[AMPS] Could not publish event to broker", publishErr.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Could not publish your event to the broker"))
 		return publishErr
@@ -102,7 +102,7 @@ func JobAcknowledge(
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
-		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
+		println("[AMPS] Job ID:", job.Identifier, "does not exists in the manifest")
 		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
 	}
 
@@ -158,7 +158,7 @@ func JobReject(
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
-		println("[batchable] Job ID:", job.Identifier, "does not exists in the manifest")
+		println("[AMPS] Job ID:", job.Identifier, "does not exists in the manifest")
 		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
 	}
 

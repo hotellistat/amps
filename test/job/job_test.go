@@ -1,8 +1,9 @@
 package job
 
 import (
-	"batchable/cmd/batchable/job"
 	"testing"
+
+	"github.com/hotellistat/AMPS/cmd/amps/job"
 )
 
 type FakeMessage struct {

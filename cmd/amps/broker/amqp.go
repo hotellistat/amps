@@ -1,10 +1,6 @@
 package broker
 
 import (
-	"batchable/cmd/batchable/cloudevent"
-	"batchable/cmd/batchable/config"
-	"batchable/cmd/batchable/job"
-	"batchable/cmd/batchable/workload"
 	"errors"
 	"os"
 	"sync"
@@ -12,6 +8,10 @@ import (
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/getsentry/sentry-go"
+	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
+	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/AMPS/cmd/amps/workload"
 	"github.com/streadway/amqp"
 	"k8s.io/apimachinery/pkg/util/json"
 )
@@ -45,7 +45,7 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 		}
 
 		localHub.CaptureException(err)
-		println("[batchable] dial exception", err.Error())
+		println("[AMPS] dial exception", err.Error())
 		errorChan <- err
 		time.Sleep(1 * time.Second)
 	}
@@ -70,10 +70,10 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 
 		connectErrorChan := make(chan error)
 
-		println("[batchable] connecting to", uri)
+		println("[AMPS] connecting to", uri)
 		broker.connection = broker.amqpConnect(uri, connectErrorChan, localHub)
 
-		println("[batchable] initialized AMQP connection")
+		println("[AMPS] initialized AMQP connection")
 
 		// Register a NotifyClose on the reconnectChan channel, such that
 		// a broker connection will trigger a reconnect by running a new iteration
@@ -153,7 +153,7 @@ func (broker *AMQPBroker) Evacuate() {
 	broker.jobManifest.Mutex.RLock()
 	defer broker.jobManifest.Mutex.RUnlock()
 
-	println("[batchable] Starting evacuation")
+	println("[AMPS] Starting evacuation")
 	for ID, job := range broker.jobManifest.Jobs {
 		jobData := job.Message.GetData()
 
@@ -179,7 +179,7 @@ func (broker *AMQPBroker) Evacuate() {
 
 // Teardown the natsshim connection and all natsshim services
 func (broker *AMQPBroker) Teardown() {
-	println("[batchable] tearing down broker")
+	println("[AMPS] tearing down broker")
 	cancelErr := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 	if cancelErr != nil {
 		sentry.CaptureException(cancelErr)
@@ -213,14 +213,14 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	eventID := event.Context.GetID()
 
 	if broker.config.Debug {
-		println("[batchable] job ID:", eventID)
+		println("[AMPS] job ID:", eventID)
 	}
 
 	broker.jobManifest.Mutex.Lock()
 
 	if broker.jobManifest.HasJob(eventID) {
 		broker.jobManifest.Mutex.Unlock()
-		return errors.New("[batchable] Job ID: " + eventID + "already exists")
+		return errors.New("[AMPS] Job ID: " + eventID + "already exists")
 	}
 
 	// Insert new into queue
@@ -240,7 +240,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		}
 
 		if broker.config.Debug {
-			println("[batchable] Max job concurrency reached, stopping broker")
+			println("[AMPS] Max job concurrency reached, stopping broker")
 		}
 	}
 	broker.jobManifest.Mutex.Unlock()
@@ -248,13 +248,13 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	// Trigger the workload endpoint by sending the job via POST
 	workloadErr := workload.Trigger(event, broker.config)
 	if workloadErr != nil {
-		println("[batchable]", workloadErr.Error())
-		println("[batchable] Rejecting job for rescheduling")
+		println("[AMPS]", workloadErr.Error())
+		println("[AMPS] Rejecting job for rescheduling")
 
 		broker.jobManifest.Mutex.Lock()
 		if !broker.jobManifest.HasJob(eventID) {
 			broker.jobManifest.Mutex.Unlock()
-			println("[batchable] Job ID:", eventID, "does not exists in the manifest")
+			println("[AMPS] Job ID:", eventID, "does not exists in the manifest")
 			return nil
 		}
 
@@ -299,7 +299,7 @@ func (broker *AMQPBroker) Start() error {
 	)
 
 	if err != nil {
-		println("[batchable] Could not start consumer", err.Error())
+		println("[AMPS] Could not start consumer", err.Error())
 		return err
 	}
 
@@ -329,7 +329,7 @@ func (broker *AMQPBroker) Stop() error {
 	err := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 
 	if err != nil {
-		println("[batchable] Could not cancel consumer", err.Error())
+		println("[AMPS] Could not cancel consumer", err.Error())
 		return err
 	}
 
@@ -356,7 +356,7 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 		})
 
 	if err != nil {
-		println("[batchable] Could not Publish result", err.Error(), string(encodedData))
+		println("[AMPS] Could not Publish result", err.Error(), string(encodedData))
 		return err
 	}
 	return nil
