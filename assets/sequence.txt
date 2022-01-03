@@ -1,0 +1,51 @@
+title AMPS sequence
+
+participant RabbitMQ
+participant AMPS
+participant Workload
+
+[->RabbitMQ: Publish\nmessage
+RabbitMQ->(1)AMPS: Queue\nmessage
+activate AMPS
+space -3
+AMPS-->(1)RabbitMQ: Ack message
+AMPS->AMPS: Register job\nin local manifest
+AMPS->(1)Workload: Send job POST request
+activate AMPS
+activate Workload
+space -3
+Workload-->(1)AMPS: Ack job
+entryspacing 3
+group success
+Workload->(1)AMPS: Job successful
+deactivate Workload
+AMPS->AMPS: Garbage collect job\nand accept new ones
+deactivate AMPS
+deactivate AMPS
+end
+group failure
+activate AMPS
+activate AMPS
+activate Workload
+Workload->(1)AMPS: Requeue
+deactivate AMPS
+deactivate Workload
+AMPS->(1)RabbitMQ: Re-publish\nmessage
+AMPS->AMPS: Garbage collect job\nand accept new ones
+deactivate AMPS
+deactivate AMPS
+end
+
+group timeout
+activate AMPS
+activate AMPS
+activate Workload
+AMPS->AMPS: Reconcile TTL\nand timeout job
+deactivate AMPS
+
+AMPS->(1)RabbitMQ: Re-publish\nmessage
+AMPS->AMPS: Garbage collect job\nand accept new ones
+deactivate AMPS
+deactivate AMPS
+end
+deactivate Workload

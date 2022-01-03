@@ -112,6 +112,11 @@ spec:
 
 This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod/Deployment template.
 
+
+## Sequence diagram
+Sometimes a simple diagram explains more than a thousand words:
+
+![](assets/sequence.svg)
 ## Development
 
 Developing AMPS is a simple as it gets. Follow these steps:
