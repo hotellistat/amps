@@ -144,4 +144,5 @@ The application should just start up and listen for any new messages in the mess
 - [x] Prometheus metrics endpoint
 - [ ] Synchronous mode (FaaS)
 - [x] Configuration should support multiple message brokers
-- [ ] Parallel subscriptions
+- [ ] ~~Parallel subscriptions~~
+- [ ] Message requeueing and dead letter queueing
