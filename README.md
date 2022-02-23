@@ -1,5 +1,5 @@
-
 ![](assets/repository-hero.png)
+
 ## Prolog
 
 AMPS arose from our necessity to dynamically scale asynchronous worker queue jobs
@@ -87,17 +87,17 @@ spec:
           # Have a look at /cmd/config/config.go for further configuration details
           env:
             - name: BROKER_HOST
-              value: "amqp://username:password@rabbitmq:5672"
+              value: 'amqp://username:password@rabbitmq:5672'
             - name: BROKER_SUBJECT
               value: com.yourorg.some-message-queue
             - name: JOB_TIMEOUT
-              value: "1h"
+              value: '1h'
             - name: DEBUG
-              value: "true"
+              value: 'true'
             - name: MAX_CONCURRENCY
-              value: "20"
+              value: '20'
             - name: WORKLOAD_ADDRESS
-              value: "http://localhost:80"
+              value: 'http://localhost:80'
 
         # This container represents your workload.
         # The workload has to have a HTTP server running on the defined port
@@ -112,11 +112,16 @@ spec:
 
 This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod/Deployment template.
 
-
 ## Sequence diagram
+
 Sometimes a simple diagram explains more than a thousand words:
 
 ![](assets/sequence.svg)
+
+## Architectural overview
+
+![](assets/architecture.png)
+
 ## Development
 
 Developing AMPS is a simple as it gets. Follow these steps:
@@ -125,8 +130,8 @@ Developing AMPS is a simple as it gets. Follow these steps:
 2. Set the `.env` environment variables to your specification (have a look into [`cmd/amps/config/config.go`](/cmd/amps/config/config.go) for further configuration settings)
 3. Launch a local RabbitMQ server (`docker-compose up rabbitmq`)
 4. Launch the test webserver in the hack folder (`make server`)
-3. Configure the environment variables in the `.env` for your system
-4. Run `make dev`
+5. Configure the environment variables in the `.env` for your system
+6. Run `make dev`
 
 The application should just start up and listen for any new messages in the message broker.
 
