@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/cloudevents/sdk-go/v2 v2.8.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/getsentry/sentry-go v0.12.0
+	github.com/getsentry/sentry-go v0.13.0
 	github.com/jedib0t/go-pretty/v6 v6.2.4
 	github.com/joho/godotenv v1.4.0
 	github.com/prometheus/client_golang v1.11.0
