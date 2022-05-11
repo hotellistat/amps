@@ -112,6 +112,11 @@ spec:
 
 This `yaml` schema can of course also be converted into any other k8s object that wraps a Pod/Deployment template.
 
+## Important notes
+
+- Your workload webserver must always instantly respond with a 200 satus code upon receiving a new request from AMPS
+- Make sure to always either acknowlede or reject messages from AMPS such that you don't conjest the job manifest
+
 ## Sequence diagram
 
 Sometimes a simple diagram explains more than a thousand words:
