@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"signal"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -26,10 +25,12 @@ type AcknowledgeValues struct {
 	Identifier string
 }
 
-const (
-	AmqpUrl = "amqp://guest:guest@localhost:5672/"
-)
+type CleanupFcnType func(f interface{}) error
 
+var CleanupFcn CleanupFcnType
+var CleanupArg interface{}
+
+var AmqpUrl = "amqp://guest:guest@localhost:5672/"
 var PostUrl = "http://localhost"
 var RunWithDebug bool = false
 var RequesterName string = "UKNOWN"
@@ -256,7 +257,6 @@ func publishServer(listenerPort string) {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
-		//err := JobAcknowledge(w, req, conf, &jobManifest, &broker)
 		err = acknowledge(w, req)
 		if err != nil {
 			localHub.CaptureException(err)
@@ -269,7 +269,6 @@ func publishServer(listenerPort string) {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
-		//err := JobReject(w, req, conf, &jobManifest, &broker)
 		err = reject(w, req)
 		if err != nil {
 			localHub.CaptureException(err)
@@ -284,7 +283,6 @@ func publishServer(listenerPort string) {
 			return
 		}
 		err = publish(w, req)
-		//err := JobPublish(w, req, conf, &jobManifest, &broker)
 		if err != nil {
 			localHub.CaptureException(err)
 		}
@@ -311,9 +309,12 @@ func ConsumePublish(eventTypeFrom string, postPort string, listenerPort string) 
 	signal.Notify(signalChan, os.Interrupt)
 	go func() {
 		for signal := range signalChan {
-			log.Printf("signal:", signal.String())
-			// broker.Evacuate()
-			// broker.Teardown()
+			log.Printf("signal: %s", signal.String())
+			if CleanupFcn != nil {
+				if err = CleanupFcn(CleanupArg); err != nil {
+					log.Printf("ERROR in CleanupFcn: %v", err)
+				}
+			}
 			cleanupDone <- true
 		}
 	}()
