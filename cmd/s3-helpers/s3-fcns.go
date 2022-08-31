@@ -1,15 +1,18 @@
 package s3fcns
 
 import (
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/getsentry/sentry-go"
 )
@@ -131,4 +134,71 @@ func UploadToS3(gzipFileName string, jsonBytes []byte, path string, actionType s
 		// FIXME!! check for error
 	}
 	return s3Upload.GzipFileName, s3Upload.Size, err
+}
+
+func DownloadFromS3(path string, gzipFileName string) (string, error) {
+	var err error = nil
+	var s3ConnectParams S3ConnectParams
+	var gzSize int64
+	var gzipSize int
+	var r *gzip.Reader
+	var s3Session *session.Session
+	var downloader *s3manager.Downloader
+	var gzData []byte
+	var s3DownloadData []byte
+	var fileContents string
+
+	s3ConnectParams = S3ConnectParams{
+		S3Region:          S3BucketInfoValues.S3Region,
+		S3AccessKeyId:     S3AccessKeyId,
+		S3SecretAccessKey: S3SecretAccessKey,
+	}
+	s3Session = session.Must(S3Session(s3ConnectParams))
+	downloadConfig := &s3.GetObjectInput{
+		Bucket: aws.String(S3BucketInfoValues.S3BucketName),
+		Key:    aws.String(path + gzipFileName),
+	}
+	log.Printf("path: %v gzipFileName: %v\n", path, gzipFileName)
+	awsConfig := aws.Config{
+		Region:      aws.String(S3BucketInfoValues.S3Region),
+		Endpoint:    aws.String(S3BucketInfoValues.S3Endpoint),
+		Credentials: credentials.NewStaticCredentials(S3AccessKeyId, S3SecretAccessKey, ""),
+	}
+
+	svc := s3.New(session.New(&awsConfig))
+	var objData *s3.HeadObjectOutput
+	log.Printf("AWS_BUCKET_NAME: %v path: %v gzipFileName: %v\n", S3BucketInfoValues.S3BucketName, path, gzipFileName)
+	if objData, err = svc.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(S3BucketInfoValues.S3BucketName),
+		Key:    aws.String(path + gzipFileName),
+	}); err != nil {
+		log.Printf("ERROR in getting HeadObject: %v", err)
+		sentry.CaptureException(err)
+		return "", err
+	}
+	gzipSize = int(*objData.ContentLength)
+	gzData = make([]byte, gzipSize, gzipSize)
+	writeAtBuffer := aws.NewWriteAtBuffer(gzData)
+	downloader = s3manager.NewDownloader(s3Session)
+	if gzSize, err = downloader.Download(writeAtBuffer, downloadConfig); err != nil {
+		log.Printf("ERROR in Download: %v\n", err)
+		sentry.CaptureException(err)
+		return "", err
+	}
+	if gzSize == 0 {
+		// FIXME eventually error message??
+	}
+	//log.Printf("gzSize: %d\n", gzSize)
+	if r, err = gzip.NewReader(bytes.NewReader(gzData)); err != nil {
+		log.Printf("ERROR in DownloadFromS3 gzip.NewReader: %v\n", err)
+		sentry.CaptureException(err)
+		return "", err
+	}
+	if s3DownloadData, err = ioutil.ReadAll(r); err != nil {
+		log.Printf("ERROR in ReadAll gzData: %v\n", err)
+		sentry.CaptureException(err)
+		return "", err
+	}
+	fileContents = string(s3DownloadData)
+	return fileContents, err
 }
