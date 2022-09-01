@@ -1,4 +1,4 @@
-module github.com/hotellistat/amps-apw/cmd
+module github.com/hotellistat/amps-apw/helpers/consume-publish
 
 go 1.17
 
