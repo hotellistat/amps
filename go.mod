@@ -3,6 +3,7 @@ module github.com/hotellistat/AMPS
 go 1.17
 
 require (
+	github.com/aws/aws-sdk-go v1.44.106
 	github.com/cloudevents/sdk-go/v2 v2.8.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/getsentry/sentry-go v0.12.0
@@ -14,7 +15,6 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go v1.44.89 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

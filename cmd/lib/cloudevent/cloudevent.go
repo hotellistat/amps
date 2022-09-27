@@ -1,4 +1,4 @@
-package eventfcns
+package cloudevent
 
 import (
 	"bytes"

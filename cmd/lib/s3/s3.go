@@ -1,4 +1,4 @@
-package s3fcns
+package s3
 
 import (
 	"bytes"

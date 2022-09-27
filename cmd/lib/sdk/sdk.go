@@ -1,4 +1,4 @@
-package consumePublish
+package sdk
 
 import (
 	"bytes"
@@ -46,8 +46,8 @@ func PublishRabbitmqNextStep(myName string, event cloudevents.Event) error {
 	}
 	defer conn.Close()
 
-	// instance over the connection we have already
-	// established.
+	// instance over the connection we have already~~`
+	// established.`
 	if ch, err = conn.Channel(); err != nil {
 		log.Printf("ERROR in Channel: %v\n", err)
 	}
