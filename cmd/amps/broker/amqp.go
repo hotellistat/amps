@@ -2,6 +2,7 @@ package broker
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -170,6 +171,7 @@ func (broker *AMQPBroker) Evacuate() {
 		)
 
 		if err != nil {
+			fmt.Println(err)
 			sentry.CaptureException(err)
 		}
 	}
@@ -182,11 +184,13 @@ func (broker *AMQPBroker) Teardown() {
 	println("[AMPS] tearing down broker")
 	cancelErr := broker.consumeChannel.Cancel(broker.config.WorkerID, false)
 	if cancelErr != nil {
+		fmt.Println(cancelErr)
 		sentry.CaptureException(cancelErr)
 	}
 
 	closeErr := broker.connection.Close()
 	if closeErr != nil {
+		fmt.Println(closeErr)
 		sentry.CaptureException(closeErr)
 	}
 }
