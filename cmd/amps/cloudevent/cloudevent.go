@@ -13,6 +13,7 @@ import (
 func Unmarshal(data []byte) (event.Event, error) {
 	event := cloudevent.NewEvent()
 
+	fmt.Println(string(data))
 	err := json.Unmarshal(data, &event)
 
 	if err != nil {
