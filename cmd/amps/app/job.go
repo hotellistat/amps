@@ -101,9 +101,9 @@ func JobAcknowledge(
 	if !jobManifest.HasJob(job.Identifier) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
-		println("[AMPS] Job ID:", job.Identifier, "does not exists in the manifest")
-		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
+		w.Write([]byte("Could not publish job. Job does not exist in the manifest."))
+		println("[AMPS] Job ID:", job.Identifier, "does not exist in the manifest")
+		return errors.New("Job ID: " + job.Identifier + " does not exist in the manifest")
 	}
 
 	if job.Reschedule {
@@ -157,9 +157,9 @@ func JobReject(
 	if !jobManifest.HasJob(job.Identifier) {
 		jobManifest.Mutex.Unlock()
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Could not publish job. Job does not exists in the manifest."))
-		println("[AMPS] Job ID:", job.Identifier, "does not exists in the manifest")
-		return errors.New("Job ID: " + job.Identifier + " does not exists in the manifest")
+		w.Write([]byte("Could not publish job. Job does not exist in the manifest."))
+		println("[AMPS] Job ID:", job.Identifier, "does not exist in the manifest")
+		return errors.New("Job ID: " + job.Identifier + " does not exist in the manifest")
 	}
 
 	if job.Reschedule {
