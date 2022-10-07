@@ -211,6 +211,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 	event, err := cloudevent.Unmarshal(msg.Body)
 	if err != nil {
+		msg.Nack(false, false)
 		return err
 	}
 
@@ -313,8 +314,8 @@ func (broker *AMQPBroker) Start() error {
 		for d := range messages {
 			err := broker.messageHandler(d)
 			if err != nil {
+				fmt.Println(err)
 				localHub.CaptureException(err)
-				println(err.Error())
 			}
 		}
 	}(sentry.CurrentHub().Clone())
