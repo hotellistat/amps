@@ -85,7 +85,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 
 		if consumeErr != nil {
 			localHub.CaptureException(consumeErr)
-			println("[batchbable] could not create consumer channel")
+			println("[AMPS] could not create consumer channel")
 			os.Exit(1)
 		}
 
@@ -111,7 +111,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 
 		if publishErr != nil {
 			localHub.CaptureException(publishErr)
-			println("[batchbable] could not create publisher channel")
+			println("[AMPS] could not create publisher channel")
 			os.Exit(1)
 		}
 
@@ -158,7 +158,7 @@ func (broker *AMQPBroker) Evacuate() {
 	for ID, job := range broker.jobManifest.Jobs {
 		jobData := job.Message.GetData()
 
-		println("[batchbable] evacuating job", ID, jobData)
+		println("[AMPS] evacuating job", ID, jobData)
 		err := broker.publishChannel.Publish(
 			"",
 			broker.config.BrokerSubject,
@@ -176,7 +176,7 @@ func (broker *AMQPBroker) Evacuate() {
 		}
 	}
 
-	println("[batchbable] evacuated jobs")
+	println("[AMPS] evacuated jobs")
 }
 
 // Teardown the natsshim connection and all natsshim services

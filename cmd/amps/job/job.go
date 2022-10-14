@@ -24,7 +24,7 @@ var (
 	messageLifetime = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "amps_message_lifetime_seconds",
 		Help:    "The total number of inserted messages from the broker",
-		Buckets: prometheus.LinearBuckets(0, 300, 60),
+		Buckets: prometheus.ExponentialBuckets(1, 2, 16),
 	})
 )
 

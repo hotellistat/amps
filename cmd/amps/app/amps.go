@@ -52,6 +52,7 @@ func Run(conf *config.Config) {
 		metricsServer := http.NewServeMux()
 		metricsServer.Handle("/metrics", promhttp.Handler())
 		go http.ListenAndServe(fmt.Sprint(":", conf.MetricsPort), metricsServer)
+		println("[AMPS] Metrics server started")
 	}
 
 	go func() {
