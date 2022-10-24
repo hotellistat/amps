@@ -3,7 +3,7 @@ module github.com/hotellistat/AMPS
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go v1.44.116
+	github.com/aws/aws-sdk-go v1.44.122
 	github.com/cloudevents/sdk-go/v2 v2.12.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/getsentry/sentry-go v0.14.0
