@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/hotellistat/AMPS/cmd/amps/broker"
-	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
-	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/broker"
+	"github.com/hotellistat/amps/cmd/amps/cloudevent"
+	"github.com/hotellistat/amps/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/job"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )

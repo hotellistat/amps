@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hotellistat/AMPS/cmd/amps/broker"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
-	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/broker"
+	"github.com/hotellistat/amps/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/job"
 	"github.com/joho/godotenv"
 	"github.com/streadway/amqp"
 )

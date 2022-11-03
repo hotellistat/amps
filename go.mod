@@ -1,4 +1,4 @@
-module github.com/hotellistat/AMPS
+module github.com/hotellistat/amps
 
 go 1.19
 

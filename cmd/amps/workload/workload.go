@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	cloudeventSdk "github.com/cloudevents/sdk-go/v2/event"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/config"
 )
 
 // TriggerWorkload sends a HTTP request to the sibling workload on every new broker job

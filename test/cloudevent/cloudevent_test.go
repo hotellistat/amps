@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
+	"github.com/hotellistat/amps/cmd/amps/cloudevent"
 	"github.com/joho/godotenv"
 )
 

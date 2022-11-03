@@ -9,10 +9,10 @@ import (
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/getsentry/sentry-go"
-	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
-	"github.com/hotellistat/AMPS/cmd/amps/job"
-	"github.com/hotellistat/AMPS/cmd/amps/workload"
+	"github.com/hotellistat/amps/cmd/amps/cloudevent"
+	"github.com/hotellistat/amps/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/workload"
 	"github.com/streadway/amqp"
 	"k8s.io/apimachinery/pkg/util/json"
 )

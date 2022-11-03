@@ -2,8 +2,8 @@ package broker
 
 import (
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
-	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/job"
 )
 
 type Shim interface {

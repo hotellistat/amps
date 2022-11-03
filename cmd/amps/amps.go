@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/hotellistat/AMPS/cmd/amps/app"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/app"
+	"github.com/hotellistat/amps/cmd/amps/config"
 	"github.com/joho/godotenv"
 )
 

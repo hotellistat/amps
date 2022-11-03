@@ -3,7 +3,7 @@ package job
 import (
 	"testing"
 
-	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/job"
 )
 
 type FakeMessage struct {
