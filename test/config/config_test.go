@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/config"
 )
 
 func TestGetEnv(t *testing.T) {

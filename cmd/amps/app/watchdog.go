@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/hotellistat/AMPS/cmd/amps/broker"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
-	"github.com/hotellistat/AMPS/cmd/amps/job"
+	"github.com/hotellistat/amps/cmd/amps/broker"
+	"github.com/hotellistat/amps/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/job"
 )
 
 // Watchdog is a goroutine that takes care of job timeouts and general state management

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hotellistat/AMPS/cmd/amps/cloudevent"
+	"github.com/hotellistat/amps/cmd/amps/cloudevent"
 )
 
 func main() {

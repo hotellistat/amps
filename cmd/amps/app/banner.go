@@ -5,7 +5,7 @@ import (
 	"reflect"
 
 	"github.com/common-nighthawk/go-figure"
-	"github.com/hotellistat/AMPS/cmd/amps/config"
+	"github.com/hotellistat/amps/cmd/amps/config"
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
