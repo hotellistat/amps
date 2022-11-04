@@ -30,18 +30,18 @@ type CleanupFcnType func(f interface{}) error
 var CleanupFcn CleanupFcnType
 var CleanupArg interface{}
 
-var AmqpUrl = "amqp://guest:guest@localhost:5672/"
-var PostUrl = "http://localhost"
+//var AmqpUrl = "amqp://guest:guest@localhost:5672/"
+//var PostUrl = "http://localhost"
 var RunWithDebug bool = false
 var RequesterName string = "UKNOWN"
 
-func PublishRabbitmqNextStep(myName string, event cloudevents.Event) error {
+func PublishRabbitmqNextStep(amqpUrl string, myName string, event cloudevents.Event) error {
 	var err error = nil
 	var conn *amqp.Connection
 	var ch *amqp.Channel
 	var q amqp.Queue
 
-	if conn, err = amqp.Dial(AmqpUrl); err != nil {
+	if conn, err = amqp.Dial(amqpUrl); err != nil {
 		log.Printf("ERROR in Dial: %v\n", err)
 	}
 	defer conn.Close()
@@ -132,38 +132,41 @@ func reject(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
-func publish(w http.ResponseWriter, r *http.Request) error {
-	var err error = nil
-	var body []byte
-	var event cloudevents.Event
+//func publish(w http.ResponseWriter, r *http.Request) error
+func publishHandler(sentryHandler *sentryhttp.Handler, amqpUrl string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error = nil
+		var body []byte
+		var event cloudevents.Event
 
-	log.SetPrefix(fmt.Sprintf("[%s consume-publish-rabbitmq publish] ", RequesterName))
-	if RunWithDebug {
-		log.Printf("GOT publish\n")
-	}
-	if r.Method != "POST" {
-		log.Printf("ERROR in publish only POST is allowed")
-		return err
-	}
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
-		log.Printf("ERROR publish ReadAll(r.Body): %v\n", err)
-		return err
-	}
-
-	if len(body) > 0 {
-		if err = json.Unmarshal(body, &event); err != nil {
-			log.Printf("ERROR publish Unmarshal(body): %v\n", err)
-			return err
+		log.SetPrefix(fmt.Sprintf("[%s consume-publish-rabbitmq publish] ", RequesterName))
+		if RunWithDebug {
+			log.Printf("GOT publish\n")
 		}
+		if r.Method != "POST" {
+			log.Printf("ERROR in publish only POST is allowed")
+			return
+		}
+		if body, err = ioutil.ReadAll(r.Body); err != nil {
+			log.Printf("ERROR publish ReadAll(r.Body): %v\n", err)
+			return
+		}
+
+		if len(body) > 0 {
+			if err = json.Unmarshal(body, &event); err != nil {
+				log.Printf("ERROR publish Unmarshal(body): %v\n", err)
+				return
+			}
+		}
+		if err = PublishRabbitmqNextStep(amqpUrl, RequesterName, event); err != nil {
+			log.Printf("ERROR in PublishRabbitmqNextStep: %v\n", err)
+			return
+		}
+		return
 	}
-	if err = PublishRabbitmqNextStep(RequesterName, event); err != nil {
-		log.Printf("ERROR in PublishRabbitmqNextStep: %v\n", err)
-		return err
-	}
-	return err
 }
 
-func consume(eventTypeFrom string, postPort string) error {
+func consume(eventTypeFrom string, amqpUrl string, postUrl string, postPort string) error {
 	var err error = nil
 	var conn *amqp.Connection
 	var ch *amqp.Channel
@@ -172,7 +175,7 @@ func consume(eventTypeFrom string, postPort string) error {
 	if RunWithDebug {
 		log.Printf("=== ConsumePublish\n")
 	}
-	if conn, err = amqp.Dial(AmqpUrl); err != nil {
+	if conn, err = amqp.Dial(amqpUrl); err != nil {
 		log.Printf("ERROR Failed to connect to RabbitMQ%v\n", err)
 	}
 	defer conn.Close()
@@ -220,7 +223,7 @@ func consume(eventTypeFrom string, postPort string) error {
 				log.Printf("=== idx: %d\n", idx)
 				log.Printf("received a message: %s", d.Body)
 			}
-			url = fmt.Sprintf(PostUrl+"%s", postPort)
+			url = fmt.Sprintf(postUrl+"%s", postPort)
 			if err = json.Unmarshal(d.Body, &event); err != nil {
 				log.Printf("ERROR in Unmarshal(d.Body) %v\n", err)
 				return
@@ -244,7 +247,7 @@ func consume(eventTypeFrom string, postPort string) error {
 	return err
 }
 
-func publishServer(listenerPort string) {
+func publishServer(amqpUrl string, postUrl string, listenerPort string) {
 	var err error = nil
 
 	server := http.NewServeMux()
@@ -277,15 +280,12 @@ func publishServer(listenerPort string) {
 
 	// This endpoint handles publish
 	server.HandleFunc("/publish", sentryHandler.HandleFunc(func(w http.ResponseWriter, req *http.Request) {
-		localHub := sentry.GetHubFromContext(req.Context())
+		//localHub := sentry.GetHubFromContext(req.Context())
 		if req.Method != "POST" {
 			fmt.Fprintf(w, "Only POST is allowed")
 			return
 		}
-		err = publish(w, req)
-		if err != nil {
-			localHub.CaptureException(err)
-		}
+		publishHandler(sentryHandler, amqpUrl)
 	}))
 	if RunWithDebug {
 		log.Printf("will listen on %s\n", listenerPort)
@@ -296,12 +296,12 @@ func publishServer(listenerPort string) {
 	return
 }
 
-func ConsumePublish(eventTypeFrom string, postPort string, listenerPort string) error {
+func ConsumePublish(eventTypeFrom string, amqpUrl string, postUrl, postPort string, listenerPort string) error {
 	var err error = nil
 
 	log.SetPrefix(fmt.Sprintf("[%s] ", RequesterName))
-	go consume(eventTypeFrom, postPort)
-	go publishServer(listenerPort)
+	go consume(eventTypeFrom, amqpUrl, postUrl, postPort)
+	go publishServer(amqpUrl, postUrl, listenerPort)
 
 	// General signal handling to teardown the worker
 	signalChan := make(chan os.Signal, 1)
