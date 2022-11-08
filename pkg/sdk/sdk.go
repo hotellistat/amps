@@ -139,6 +139,11 @@ func publishHandler(sentryHandler *sentryhttp.Handler, amqpUrl string) http.Hand
 		var body []byte
 		var event cloudevents.Event
 
+		if r.Method != "POST" {
+			fmt.Fprintf(w, "publishHandler Only POST is allowed")
+			return
+		}
+
 		log.SetPrefix(fmt.Sprintf("[%s consume-publish-rabbitmq publish] ", RequesterName))
 		if RunWithDebug {
 			log.Printf("GOT publish\n")
@@ -279,14 +284,7 @@ func publishServer(amqpUrl string, postUrl string, listenerPort string) {
 	}))
 
 	// This endpoint handles publish
-	server.HandleFunc("/publish", sentryHandler.HandleFunc(func(w http.ResponseWriter, req *http.Request) {
-		//localHub := sentry.GetHubFromContext(req.Context())
-		if req.Method != "POST" {
-			fmt.Fprintf(w, "Only POST is allowed")
-			return
-		}
-		publishHandler(sentryHandler, amqpUrl)
-	}))
+	server.HandleFunc("/publish", publishHandler(sentryHandler, amqpUrl))
 	if RunWithDebug {
 		log.Printf("will listen on %s\n", listenerPort)
 	}
