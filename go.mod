@@ -3,15 +3,15 @@ module github.com/hotellistat/amps
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go v1.44.150
-	github.com/cloudevents/sdk-go/v2 v2.12.0
+	github.com/aws/aws-sdk-go v1.44.185
+	github.com/cloudevents/sdk-go/v2 v2.13.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/getsentry/sentry-go v0.15.0
-	github.com/jedib0t/go-pretty/v6 v6.4.3
+	github.com/getsentry/sentry-go v0.17.0
+	github.com/jedib0t/go-pretty/v6 v6.4.4
 	github.com/joho/godotenv v1.4.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/streadway/amqp v1.0.0
-	k8s.io/apimachinery v0.25.4
+	k8s.io/apimachinery v0.26.1
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/sys v0.1.0 // indirect
-	golang.org/x/text v0.4.0 // indirect
+	golang.org/x/text v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 )
