@@ -3,12 +3,12 @@ module github.com/hotellistat/amps
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go v1.44.193
+	github.com/aws/aws-sdk-go v1.44.201
 	github.com/cloudevents/sdk-go/v2 v2.13.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/getsentry/sentry-go v0.17.0
+	github.com/getsentry/sentry-go v0.18.0
 	github.com/jedib0t/go-pretty/v6 v6.4.4
-	github.com/joho/godotenv v1.4.0
+	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/streadway/amqp v1.0.0
 	k8s.io/apimachinery v0.26.1
