@@ -143,11 +143,10 @@ The application should just start up and listen for any new messages in the mess
 ## TODO
 
 - [x] Support RabbitMQ
-- [ ] Full unit tests
 - [ ] Add full testing pipeline
 - [ ] End to End tests
 - [x] Prometheus metrics endpoint
 - [ ] Synchronous mode (FaaS)
 - [x] Configuration should support multiple message brokers
 - [ ] ~~Parallel subscriptions~~
-- [ ] Message requeueing and dead letter queueing
+- [x] Message requeueing and dead letter queueing
