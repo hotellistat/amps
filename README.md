@@ -143,7 +143,7 @@ The application should just start up and listen for any new messages in the mess
 ## TODO
 
 - [x] Support RabbitMQ
-- [ ] Add full testing pipeline
+- [x] Tests
 - [ ] End to End tests
 - [x] Prometheus metrics endpoint
 - [ ] Synchronous mode (FaaS)
