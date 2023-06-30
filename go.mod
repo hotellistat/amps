@@ -3,15 +3,15 @@ module github.com/hotellistat/amps
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go v1.44.264
+	github.com/aws/aws-sdk-go v1.44.284
 	github.com/cloudevents/sdk-go/v2 v2.14.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
-	github.com/getsentry/sentry-go v0.21.0
+	github.com/getsentry/sentry-go v0.22.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/joho/godotenv v1.5.1
-	github.com/prometheus/client_golang v1.15.1
+	github.com/prometheus/client_golang v1.16.0
 	github.com/streadway/amqp v1.0.0
-	k8s.io/apimachinery v0.27.2
+	k8s.io/apimachinery v0.27.3
 )
 
 require (
@@ -27,12 +27,12 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
-	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
