@@ -14,10 +14,10 @@ AMPS->(1)Workload: Send job POST request
 activate AMPS
 activate Workload
 space -3
-Workload-->(1)AMPS: Ack job
+Workload-->(1)AMPS: 200 OK
 entryspacing 3
 group success
-Workload->(1)AMPS: Job successful
+Workload->(1)AMPS: Job successful (POST /acknowlege)
 deactivate Workload
 AMPS->AMPS: Garbage collect job\nand accept new ones
 deactivate AMPS
@@ -27,7 +27,7 @@ group failure
 activate AMPS
 activate AMPS
 activate Workload
-Workload->(1)AMPS: Requeue
+Workload->(1)AMPS: Requeue (POST /reject)
 deactivate AMPS
 deactivate Workload
 AMPS->(1)RabbitMQ: Re-publish\nmessage
