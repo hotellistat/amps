@@ -1,9 +1,11 @@
 module github.com/hotellistat/amps
 
-go 1.19
+go 1.21
+
+toolchain go1.21.5
 
 require (
-	github.com/aws/aws-sdk-go v1.47.13
+	github.com/aws/aws-sdk-go v1.49.4
 	github.com/cloudevents/sdk-go/v2 v2.14.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/getsentry/sentry-go v0.25.0
@@ -11,7 +13,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/streadway/amqp v1.1.0
-	k8s.io/apimachinery v0.28.4
+	k8s.io/apimachinery v0.29.0
 )
 
 require (
