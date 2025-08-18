@@ -94,19 +94,6 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 			localHub.CaptureException(qosErr)
 		}
 
-		_, queueErr := consumeChannel.QueueDeclare(
-			broker.config.BrokerSubject,
-			true,
-			false,
-			false,
-			false,
-			nil,
-		)
-
-		if queueErr != nil {
-			localHub.CaptureException(queueErr)
-		}
-
 		publishChannel, publishErr := broker.connection.Channel()
 
 		if publishErr != nil {

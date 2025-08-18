@@ -53,19 +53,6 @@ func PublishRabbitmqNextStep(amqpUrl string, myName string, event cloudevents.Ev
 	}
 	defer ch.Close()
 
-	// With the instance and declare Queues that we can
-	// publish and subscribe to.
-	if q, err = ch.QueueDeclare(
-		event.Type(), // queue name
-		true,         // durable
-		false,        // auto delete
-		false,        // exclusive
-		false,        // no wait
-		nil,          // arguments
-	); err != nil {
-		log.Printf("ERROR in QueueDeclare: %v\n", err)
-	}
-
 	var eventBytes []byte
 	if eventBytes, err = json.Marshal(event); err != nil {
 		log.Printf("ERROR in Marshal(event): %v\n", err)
