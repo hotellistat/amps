@@ -5,7 +5,19 @@ services:
     env_file: .env
     build:
       context: .
+    # AMPS will now gracefully recover when RabbitMQ restarts
+    # Health check endpoint available at http://localhost:8080/healthz
+    depends_on:
+      - rabbitmq
   rabbitmq:
-    image: rabbitmq
+    image: rabbitmq:3-management
     ports:
       - "5672:5672"
+      - "15672:15672" # Management UI at http://localhost:15672
+    # To test resilience:
+    # 1. docker-compose up -d
+    # 2. docker-compose stop rabbitmq  (AMPS will start reconnecting)
+    # 3. docker-compose start rabbitmq (AMPS will reconnect automatically)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
