@@ -7,14 +7,14 @@ and enabling workers to process several jobs in the same container in parallel.
 We chose his architecture to have instantaneous worker startup times for a specific maximum amount of parallel jobs without having to wait for a cold start of a container.
 
 AMPS represents a sidecar container that subscribes to a queue such as RabbitMQ and consumes
-messages from it, until the max concurrency limit is met. Upon receiving a message, AMPS
+messages from it, with concurrency controlled by RabbitMQ's QoS prefetch mechanism. Upon receiving a message, AMPS
 will send a HTTP request to the workload container, which will acknowledge that it has received the job by just simply sending back a valid HTTP response code.
 The workload can then asynchronously work on that message within the workload timeout.
 Upon successful completion of the workload, it will send a `acknowledge` HTTP request back to the AMPS
 sidecar container to finalize the Job completion. A workload can also send back a `reject` request, letting the AMPS container know, that the job could not successfully be processes.
 Furthermore, the AMPS container allows publishing of new jobs through its `publish` endpoint, enabling you to chain several AMPS containers together.
 
-Since AMPS holds an internal state of which job is currently worked on, it knows how to handle and how to timeout concurrently running jobs.
+Since AMPS holds an internal state of which job is currently worked on, it knows how to handle and how to timeout concurrently running jobs. Concurrency limits are enforced through RabbitMQ's native QoS prefetch mechanism rather than manual consumer management, providing more reliable and efficient message flow control.
 
 **Note:** AMPS is supposed to do one job well, and one job only. Other popular FaaS-like projects have often seen a huge amount of feature creep over the years, making them outdated, fragile and inefficient.
 

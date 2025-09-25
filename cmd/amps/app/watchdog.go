@@ -32,14 +32,6 @@ func Watchdog(
 			}
 		}
 
-		startBroker := jobManifest.Size() < conf.MaxConcurrency
 		jobManifest.Mutex.Unlock()
-
-		if startBroker {
-			err := (*broker).Start()
-			if err != nil {
-				localHub.CaptureException(err)
-			}
-		}
 	}
 }

@@ -118,15 +118,7 @@ func JobAcknowledge(
 	// link of the chain should not create any new events in the broker anymore
 	jobManifest.DeleteJob(job.Identifier)
 	workloadsAcknowledged.Inc()
-	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
-
-	if startBroker {
-		startErr := (*broker).Start()
-		if startErr != nil {
-			return startErr
-		}
-	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
@@ -174,15 +166,7 @@ func JobReject(
 	// link of the chain should not create any new events in the broker anymore
 	jobManifest.DeleteJob(job.Identifier)
 	workloadsRejected.Inc()
-	startBroker := jobManifest.Size() < conf.MaxConcurrency
 	jobManifest.Mutex.Unlock()
-
-	if startBroker {
-		startErr := (*broker).Start()
-		if startErr != nil {
-			return startErr
-		}
-	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))

@@ -74,7 +74,7 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 	}
 }
 
-// This function creates channels with retry logic
+// This function creates channels with retry logic and sets up QoS-based concurrency control
 func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 	maxRetries := 5
 	baseDelay := 1 * time.Second
@@ -100,7 +100,10 @@ func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 			continue
 		}
 
-		qosErr := consumeChannel.Qos(1, 0, false)
+		// Set QoS prefetch count to MaxConcurrency. This replaces the previous manual
+		// start/stop broker logic. RabbitMQ will only deliver up to MaxConcurrency
+		// unacknowledged messages to this consumer, providing automatic concurrency control.
+		qosErr := consumeChannel.Qos(broker.config.MaxConcurrency, 0, false)
 		if qosErr != nil {
 			localHub.CaptureException(qosErr)
 			consumeChannel.Close()
@@ -375,26 +378,14 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		return errors.New("[AMPS] Job ID: " + eventID + " already exists")
 	}
 
-	// Insert new job into queue
+	// Insert new job into queue. Concurrency is now controlled by RabbitMQ QoS
+	// prefetch limit rather than manually stopping/starting the consumer.
 	broker.jobManifest.InsertJob(
 		eventID,
 		AmqpMessageWrapper{
 			msg,
 		},
 	)
-
-	// Stop broker when the job manifest size reaches max concurrency
-	stopBroker := broker.jobManifest.Size() >= broker.config.MaxConcurrency
-	if stopBroker {
-		stopError := (*broker).Stop()
-		if stopError != nil {
-			println("[AMPS] error stopping broker:", stopError.Error())
-		}
-
-		if broker.config.Debug {
-			println("[AMPS] Max job concurrency reached, stopping broker")
-		}
-	}
 	broker.jobManifest.Mutex.Unlock()
 
 	// Trigger the workload endpoint by sending the job via POST
@@ -420,8 +411,8 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 			println("[AMPS] error nacking message:", nackErr.Error())
 		}
 	} else {
-		// Acknowledge the job. This will trigger a new message delivery since the
-		// channel "Qos" is set to "1", only allowing one inflight message at a time
+		// Acknowledge the job. RabbitMQ QoS will automatically deliver the next message
+		// up to the configured prefetch limit (MaxConcurrency)
 		ackErr := msg.Ack(false)
 		if ackErr != nil {
 			println("[AMPS] error acking message:", ackErr.Error())

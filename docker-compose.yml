@@ -1,14 +1,14 @@
 version: "3"
 services:
-  amps:
-    network_mode: host
-    env_file: .env
-    build:
-      context: .
-    # AMPS will now gracefully recover when RabbitMQ restarts
-    # Health check endpoint available at http://localhost:8080/healthz
-    depends_on:
-      - rabbitmq
+  # amps:
+  #   network_mode: host
+  #   env_file: .env
+  #   build:
+  #     context: .
+  #   # AMPS will now gracefully recover when RabbitMQ restarts
+  #   # Health check endpoint available at http://localhost:8080/healthz
+  #   depends_on:
+  #     - rabbitmq
   rabbitmq:
     image: rabbitmq:3-management
     ports:
