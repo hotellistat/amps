@@ -112,6 +112,9 @@ func JobAcknowledge(
 		go (*broker).PublishMessage(newEvent)
 	}
 
+	// Get the job to access its AMQP delivery for acknowledgment
+	jobItem := jobManifest.GetJob(job.Identifier)
+
 	// Fetch the nopublish event context extension. This will prevent publishing
 	// the recieved event to our broker. This is normally used,
 	// if you want to define the end of a chain of workloads where the last
@@ -119,6 +122,14 @@ func JobAcknowledge(
 	jobManifest.DeleteJob(job.Identifier)
 	workloadsAcknowledged.Inc()
 	jobManifest.Mutex.Unlock()
+
+	// Acknowledge the RabbitMQ message now that the job is completed successfully
+	if jobItem.Delivery != nil {
+		ackErr := jobItem.Delivery.Ack(false)
+		if ackErr != nil {
+			println("[AMPS] error acknowledging RabbitMQ message:", ackErr.Error())
+		}
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))
@@ -160,6 +171,9 @@ func JobReject(
 		go (*broker).PublishMessage(newEvent)
 	}
 
+	// Get the job to access its AMQP delivery for nack
+	jobItem := jobManifest.GetJob(job.Identifier)
+
 	// Fetch the nopublish event context extension. This will prevent publishing
 	// the recieved event to our broker. This is normally used,
 	// if you want to define the end of a chain of workloads where the last
@@ -167,6 +181,14 @@ func JobReject(
 	jobManifest.DeleteJob(job.Identifier)
 	workloadsRejected.Inc()
 	jobManifest.Mutex.Unlock()
+
+	// Nack the RabbitMQ message to requeue it since the job was rejected
+	if jobItem.Delivery != nil {
+		nackErr := jobItem.Delivery.Nack(false, true)
+		if nackErr != nil {
+			println("[AMPS] error nacking RabbitMQ message:", nackErr.Error())
+		}
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("OK"))

@@ -249,14 +249,16 @@ func (broker *AMQPBroker) Evacuate() {
 
 	println("[AMPS] Starting evacuation")
 	for ID, job := range broker.jobManifest.Jobs {
-		jobData := job.Message.GetData()
 		println("[AMPS] evacuating job", ID)
 
-		// Use publishWithRetry for evacuation to handle connection issues
-		err := broker.publishWithRetry(broker.config.BrokerSubject, jobData, 3)
-		if err != nil {
-			fmt.Println("[AMPS] failed to evacuate job", ID, ":", err.Error())
-			sentry.CaptureException(err)
+		// Nack the message to return it to the queue instead of re-publishing
+		// This is more efficient and preserves message ordering
+		if job.Delivery != nil {
+			nackErr := job.Delivery.Nack(false, true)
+			if nackErr != nil {
+				fmt.Println("[AMPS] failed to nack job during evacuation", ID, ":", nackErr.Error())
+				sentry.CaptureException(nackErr)
+			}
 		}
 	}
 
@@ -358,6 +360,14 @@ func (wrapper AmqpMessageWrapper) GetData() []byte {
 	return wrapper.message.Body
 }
 
+func (wrapper AmqpMessageWrapper) Ack(multiple bool) error {
+	return wrapper.message.Ack(multiple)
+}
+
+func (wrapper AmqpMessageWrapper) Nack(multiple, requeue bool) error {
+	return wrapper.message.Nack(multiple, requeue)
+}
+
 func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	event, err := cloudevent.Unmarshal(msg.Body)
 	if err != nil {
@@ -378,13 +388,13 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		return errors.New("[AMPS] Job ID: " + eventID + " already exists")
 	}
 
-	// Insert new job into queue. Concurrency is now controlled by RabbitMQ QoS
-	// prefetch limit rather than manually stopping/starting the consumer.
-	broker.jobManifest.InsertJob(
+	// Insert new job into queue with AMQP delivery for later acknowledgment.
+	// Concurrency is now controlled by RabbitMQ QoS prefetch limit rather than manually stopping/starting the consumer.
+	messageWrapper := AmqpMessageWrapper{msg}
+	broker.jobManifest.InsertJobWithDelivery(
 		eventID,
-		AmqpMessageWrapper{
-			msg,
-		},
+		messageWrapper,
+		messageWrapper,
 	)
 	broker.jobManifest.Mutex.Unlock()
 
@@ -410,14 +420,10 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		if nackErr != nil {
 			println("[AMPS] error nacking message:", nackErr.Error())
 		}
-	} else {
-		// Acknowledge the job. RabbitMQ QoS will automatically deliver the next message
-		// up to the configured prefetch limit (MaxConcurrency)
-		ackErr := msg.Ack(false)
-		if ackErr != nil {
-			println("[AMPS] error acking message:", ackErr.Error())
-		}
 	}
+	// Note: We no longer acknowledge the message here. The message will be acknowledged
+	// only when the workload calls /acknowledge or /reject endpoints, ensuring proper
+	// message reliability and preventing message loss if the workload fails.
 
 	return nil
 }

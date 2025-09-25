@@ -28,6 +28,16 @@ func Watchdog(
 		for ID, jobItem := range jobManifest.Jobs {
 			if time.Since(jobItem.Created) > conf.JobTimeout {
 				println("[AMPS] Job ID:", ID, "timed out")
+
+				// Nack the RabbitMQ message to requeue it since the job timed out
+				if jobItem.Delivery != nil {
+					nackErr := jobItem.Delivery.Nack(false, true)
+					if nackErr != nil {
+						println("[AMPS] error nacking timed out RabbitMQ message:", nackErr.Error())
+						localHub.CaptureException(nackErr)
+					}
+				}
+
 				jobManifest.DeleteJob(ID)
 			}
 		}

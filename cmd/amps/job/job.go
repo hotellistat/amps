@@ -32,10 +32,17 @@ type Message interface {
 	GetData() []byte
 }
 
+// AMQPDelivery interface allows storing AMQP delivery for acknowledgment
+type AMQPDelivery interface {
+	Ack(multiple bool) error
+	Nack(multiple, requeue bool) error
+}
+
 // Job represents a job item
 type Job struct {
-	Created time.Time
-	Message Message
+	Created  time.Time
+	Message  Message
+	Delivery AMQPDelivery // Store AMQP delivery for later acknowledgment
 }
 
 // Manifest represents the collection of current jobs
@@ -74,8 +81,22 @@ func (jm *Manifest) InsertJob(ID string, message Message) {
 	messagesInserted.Inc()
 
 	jm.Jobs[ID] = Job{
-		Created: time.Now(),
-		Message: message,
+		Created:  time.Now(),
+		Message:  message,
+		Delivery: nil, // Will be set separately for AMQP jobs
+	}
+
+	currentJobCount.Set(float64(jm.Size()))
+}
+
+// InsertJobWithDelivery inserts a new job with AMQP delivery for later acknowledgment
+func (jm *Manifest) InsertJobWithDelivery(ID string, message Message, delivery AMQPDelivery) {
+	messagesInserted.Inc()
+
+	jm.Jobs[ID] = Job{
+		Created:  time.Now(),
+		Message:  message,
+		Delivery: delivery,
 	}
 
 	currentJobCount.Set(float64(jm.Size()))
