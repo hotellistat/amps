@@ -11,9 +11,6 @@ type Shim interface {
 	// Initial setup for all broker connections and runtime state
 	Initialize(config.Config, *job.Manifest) bool
 
-	// Initial setup for all broker connections and runtime state
-	Evacuate()
-
 	// Gracefully disconnect broker from any external resources
 	Teardown()
 

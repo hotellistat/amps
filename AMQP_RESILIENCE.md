@@ -7,7 +7,7 @@ This document describes the improvements made to AMPS to ensure graceful recover
 Previously, AMPS had several issues that prevented graceful recovery from RabbitMQ restarts:
 
 1. **Fatal process termination**: When channel creation failed during reconnection, the process would call `os.Exit(1)`, killing the entire container
-2. **No retry logic for publishing**: Operations like `Evacuate()` and `PublishMessage()` would fail silently or panic if connections were unavailable
+2. **No retry logic for publishing**: Operations like `PublishMessage()` would fail silently or panic if connections were unavailable
 3. **Brittle connection handling**: Various operations didn't properly check connection status before attempting to use channels
 4. **Poor error visibility**: Limited logging made it difficult to diagnose connection issues
 
@@ -52,7 +52,7 @@ type AMQPBroker struct {
 
 - **Before**: Single attempt publishing that could fail silently
 - **After**: `publishWithRetry()` function with configurable retry attempts
-- **Benefit**: Critical operations like job evacuation are more reliable
+- **Benefit**: Critical operations like message publishing are more reliable
 
 ```go
 func (broker *AMQPBroker) publishWithRetry(routingKey string, body []byte, maxRetries int) error

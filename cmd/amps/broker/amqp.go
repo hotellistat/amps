@@ -342,28 +342,6 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	}
 }
 
-func (broker *AMQPBroker) Evacuate() {
-	broker.jobManifest.Mutex.RLock()
-	defer broker.jobManifest.Mutex.RUnlock()
-
-	println("[AMPS] Starting evacuation")
-	for ID, job := range broker.jobManifest.Jobs {
-		println("[AMPS] evacuating job", ID)
-
-		// Nack the message to return it to the queue instead of re-publishing
-		// This is more efficient and preserves message ordering
-		if job.Delivery != nil {
-			nackErr := job.Delivery.Nack(false, true)
-			if nackErr != nil {
-				fmt.Println("[AMPS] failed to nack job during evacuation", ID, ":", nackErr.Error())
-				sentry.CaptureException(nackErr)
-			}
-		}
-	}
-
-	println("[AMPS] evacuation completed")
-}
-
 // publishWithRetry attempts to publish a message with retries
 func (broker *AMQPBroker) publishWithRetry(routingKey string, body []byte, maxRetries int) error {
 	for attempt := 0; attempt < maxRetries; attempt++ {

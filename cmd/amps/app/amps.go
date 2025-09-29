@@ -150,7 +150,6 @@ func Run(conf *config.Config) {
 	go func() {
 		for signal := range signalChan {
 			println("[AMPS] signal:", signal.String())
-			broker.Evacuate()
 			broker.Teardown()
 			cleanupDone <- true
 		}
