@@ -106,12 +106,6 @@ func JobAcknowledge(
 		return errors.New("Job ID: " + job.Identifier + " does not exist in the manifest")
 	}
 
-	if job.Reschedule {
-		jobMessage := jobManifest.GetJob(job.Identifier)
-		newEvent, _ := cloudevent.Unmarshal(jobMessage.Message.GetData())
-		go (*broker).PublishMessage(newEvent)
-	}
-
 	// Get the job to access its AMQP delivery for acknowledgment
 	jobItem := jobManifest.GetJob(job.Identifier)
 
@@ -120,20 +114,40 @@ func JobAcknowledge(
 	// if you want to define the end of a chain of workloads where the last
 	// link of the chain should not create any new events in the broker anymore
 	jobManifest.DeleteJob(job.Identifier)
-	workloadsAcknowledged.Inc()
 	jobManifest.Mutex.Unlock()
 
-	// Acknowledge the RabbitMQ message now that the job is completed successfully
+	// Handle the message based on reschedule flag
 	if jobItem.Delivery != nil {
-		// Always attempt acknowledgment - let AMQP layer handle connection issues
-		ackErr := jobItem.Delivery.Ack(false)
-		if ackErr != nil {
-			// Check if this is a stale delivery from a reconnected connection
-			if ackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
-				println("[AMPS] message acknowledgment skipped - connection was reconnected, message will be redelivered")
+		if job.Reschedule {
+			// Reschedule = NACK with requeue (put message back in queue)
+			nackErr := jobItem.Delivery.Nack(false, true)
+			if nackErr != nil {
+				// Check if this is a stale delivery from a reconnected connection
+				if nackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
+					println("[AMPS] message reschedule skipped - connection was reconnected, message will be redelivered")
+				} else {
+					println("[AMPS] error rescheduling RabbitMQ message:", nackErr.Error())
+				}
 			} else {
-				println("[AMPS] error acknowledging RabbitMQ message:", ackErr.Error())
+				println("[AMPS] job", job.Identifier, "rescheduled successfully")
 			}
+		} else {
+			// Normal acknowledgment - message processed successfully
+			workloadsAcknowledged.Inc()
+			ackErr := jobItem.Delivery.Ack(false)
+			if ackErr != nil {
+				// Check if this is a stale delivery from a reconnected connection
+				if ackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
+					println("[AMPS] message acknowledgment skipped - connection was reconnected, message will be redelivered")
+				} else {
+					println("[AMPS] error acknowledging RabbitMQ message:", ackErr.Error())
+				}
+			}
+		}
+	} else {
+		// No delivery to acknowledge (shouldn't happen in normal operation)
+		if !job.Reschedule {
+			workloadsAcknowledged.Inc()
 		}
 	}
 
@@ -171,12 +185,6 @@ func JobReject(
 		return errors.New("Job ID: " + job.Identifier + " does not exist in the manifest")
 	}
 
-	if job.Reschedule {
-		jobMessage := jobManifest.GetJob(job.Identifier)
-		newEvent, _ := cloudevent.Unmarshal(jobMessage.Message.GetData())
-		go (*broker).PublishMessage(newEvent)
-	}
-
 	// Get the job to access its AMQP delivery for nack
 	jobItem := jobManifest.GetJob(job.Identifier)
 
@@ -188,16 +196,22 @@ func JobReject(
 	workloadsRejected.Inc()
 	jobManifest.Mutex.Unlock()
 
-	// Nack the RabbitMQ message to requeue it since the job was rejected
+	// Nack the RabbitMQ message - requeue behavior depends on reschedule flag
 	if jobItem.Delivery != nil {
-		// Always attempt nack - let AMQP layer handle connection issues
-		nackErr := jobItem.Delivery.Nack(false, true)
+		// job.Reschedule determines whether to requeue (true) or discard (false)
+		nackErr := jobItem.Delivery.Nack(false, job.Reschedule)
 		if nackErr != nil {
 			// Check if this is a stale delivery from a reconnected connection
 			if nackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
 				println("[AMPS] message nack skipped - connection was reconnected, message will be redelivered")
 			} else {
 				println("[AMPS] error nacking RabbitMQ message:", nackErr.Error())
+			}
+		} else {
+			if job.Reschedule {
+				println("[AMPS] job", job.Identifier, "rejected and rescheduled")
+			} else {
+				println("[AMPS] job", job.Identifier, "rejected and discarded")
 			}
 		}
 	}

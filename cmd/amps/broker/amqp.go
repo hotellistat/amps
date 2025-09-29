@@ -464,10 +464,6 @@ type AmqpMessageWrapper struct {
 	message amqp.Delivery
 }
 
-func (wrapper AmqpMessageWrapper) GetData() []byte {
-	return wrapper.message.Body
-}
-
 func (wrapper AmqpMessageWrapper) Ack(multiple bool) error {
 	return wrapper.message.Ack(multiple)
 }
@@ -501,7 +497,6 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	messageWrapper := AmqpMessageWrapper{msg}
 	broker.jobManifest.InsertJobWithDelivery(
 		eventID,
-		messageWrapper,
 		messageWrapper,
 	)
 	broker.jobManifest.Mutex.Unlock()

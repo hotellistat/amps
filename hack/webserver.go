@@ -40,7 +40,7 @@ func main() {
 				Reschedule bool   `json:"reschedule"`
 			}
 
-			reqBodyInstance, _ := json.Marshal(requestBody{eventID, true})
+			reqBodyInstance, _ := json.Marshal(requestBody{eventID, false})
 
 			client.Post("http://localhost:4000/acknowledge", "application/json", bytes.NewBuffer(reqBodyInstance))
 		}()

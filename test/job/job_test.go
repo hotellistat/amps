@@ -6,27 +6,23 @@ import (
 	"github.com/hotellistat/amps/cmd/amps/job"
 )
 
-type FakeMessage struct {
+type FakeDelivery struct {
 	test string
 }
 
-func (wrapper FakeMessage) GetData() []byte {
-	return []byte(wrapper.test)
-}
-
-func (n *FakeMessage) Ack() error {
+func (n *FakeDelivery) Ack(multiple bool) error {
 	println("ACK")
 	return nil
 }
 
-func (n *FakeMessage) Reject() error {
-	println("REJECT")
+func (n *FakeDelivery) Nack(multiple, requeue bool) error {
+	println("NACK")
 	return nil
 }
 
 func TestSize(t *testing.T) {
 
-	fakeMessage := &FakeMessage{
+	fakeDelivery := &FakeDelivery{
 		test: "test",
 	}
 
@@ -40,7 +36,7 @@ func TestSize(t *testing.T) {
 		t.Error()
 	}
 
-	manifest.InsertJob("1111", fakeMessage)
+	manifest.InsertJobWithDelivery("1111", fakeDelivery)
 
 	tmpSize = manifest.Size()
 
@@ -48,8 +44,8 @@ func TestSize(t *testing.T) {
 		t.Error()
 	}
 
-	manifest.InsertJob("2222", fakeMessage)
-	manifest.InsertJob("3333", fakeMessage)
+	manifest.InsertJobWithDelivery("2222", fakeDelivery)
+	manifest.InsertJobWithDelivery("3333", fakeDelivery)
 
 	tmpSize = manifest.Size()
 
@@ -57,10 +53,10 @@ func TestSize(t *testing.T) {
 		t.Error()
 	}
 
-	manifest.InsertJob("4444", fakeMessage)
-	manifest.InsertJob("5555", fakeMessage)
-	manifest.InsertJob("6666", fakeMessage)
-	manifest.InsertJob("7777", fakeMessage)
+	manifest.InsertJobWithDelivery("4444", fakeDelivery)
+	manifest.InsertJobWithDelivery("5555", fakeDelivery)
+	manifest.InsertJobWithDelivery("6666", fakeDelivery)
+	manifest.InsertJobWithDelivery("7777", fakeDelivery)
 
 	tmpSize = manifest.Size()
 
@@ -80,7 +76,7 @@ func TestSize(t *testing.T) {
 }
 
 func TestHasJob(t *testing.T) {
-	fakeMessage := &FakeMessage{
+	fakeDelivery := &FakeDelivery{
 		test: "test",
 	}
 
@@ -92,7 +88,7 @@ func TestHasJob(t *testing.T) {
 		t.Error()
 	}
 
-	manifest.InsertJob("1111", fakeMessage)
+	manifest.InsertJobWithDelivery("1111", fakeDelivery)
 
 	isTrue := manifest.HasJob("1111")
 
@@ -102,7 +98,7 @@ func TestHasJob(t *testing.T) {
 }
 
 func TestInsertJob(t *testing.T) {
-	fakeMessage := &FakeMessage{
+	fakeDelivery := &FakeDelivery{
 		test: "test",
 	}
 
@@ -114,7 +110,7 @@ func TestInsertJob(t *testing.T) {
 		t.Error()
 	}
 
-	manifest.InsertJob("aaaa", fakeMessage)
+	manifest.InsertJobWithDelivery("aaaa", fakeDelivery)
 
 	isTrue := manifest.HasJob("aaaa")
 
@@ -130,13 +126,13 @@ func TestInsertJob(t *testing.T) {
 }
 
 func TestDeleteJob(t *testing.T) {
-	fakeMessage := &FakeMessage{
+	fakeDelivery := &FakeDelivery{
 		test: "test",
 	}
 
 	manifest := job.NewManifest(10)
 
-	manifest.InsertJob("bbbb", fakeMessage)
+	manifest.InsertJobWithDelivery("bbbb", fakeDelivery)
 
 	isTrue := manifest.HasJob("bbbb")
 
