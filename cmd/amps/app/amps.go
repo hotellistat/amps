@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +15,22 @@ import (
 	"github.com/hotellistat/amps/cmd/amps/config"
 	"github.com/hotellistat/amps/cmd/amps/job"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// HealthStatus represents the health status of AMPS
+type HealthStatus struct {
+	Status     string    `json:"status"`
+	Timestamp  time.Time `json:"timestamp"`
+	Uptime     string    `json:"uptime"`
+	BrokerType string    `json:"broker_type"`
+	Connected  bool      `json:"connected"`
+	JobCount   int       `json:"job_count"`
+	Details    string    `json:"details,omitempty"`
+}
+
+var (
+	startupTime = time.Now()
+	isReady     = false
 )
 
 // Run is the primary entrypoint of the AMPS application
@@ -38,7 +55,10 @@ func Run(conf *config.Config) {
 	jobManifest := job.NewManifest(conf.MaxConcurrency)
 
 	// Initialize a new broker instance.
-	broker.Initialize(*conf, &jobManifest)
+	brokerInitialized := broker.Initialize(*conf, &jobManifest)
+
+	// Mark as ready only if broker initialized successfully
+	isReady = brokerInitialized
 
 	// The watchdog, if enabled, checks the timeout of each Job and deletes it if it got too old
 	if conf.JobTimeout > 0 {
@@ -99,16 +119,24 @@ func Run(conf *config.Config) {
 			}
 		}))
 
-		// Health check so the container can be killed if unhealthy
+		// Kubernetes liveness probe - checks if the application is alive
 		server.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
-			brokerHealthy := broker.Healthy()
-			if brokerHealthy {
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
-			} else {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte("UNHEALTHY"))
-			}
+			handleHealthCheck(w, req, &broker, &jobManifest, conf, false)
+		})
+
+		// Kubernetes readiness probe - checks if the application is ready to serve traffic
+		server.HandleFunc("/readyz", func(w http.ResponseWriter, req *http.Request) {
+			handleHealthCheck(w, req, &broker, &jobManifest, conf, true)
+		})
+
+		// Legacy health endpoint for backward compatibility
+		server.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
+			handleHealthCheck(w, req, &broker, &jobManifest, conf, false)
+		})
+
+		// Detailed health endpoint with broker diagnostics
+		server.HandleFunc("/health/detailed", func(w http.ResponseWriter, req *http.Request) {
+			handleDetailedHealthCheck(w, req, &broker, &jobManifest, conf)
 		})
 
 		http.ListenAndServe(fmt.Sprint(":", conf.Port), server)
@@ -129,4 +157,112 @@ func Run(conf *config.Config) {
 	}()
 	<-cleanupDone
 
+}
+
+// handleHealthCheck provides comprehensive health checking for Kubernetes probes
+func handleHealthCheck(w http.ResponseWriter, req *http.Request, broker *broker.Shim, jobManifest *job.Manifest, conf *config.Config, checkReadiness bool) {
+	w.Header().Set("Content-Type", "application/json")
+
+	brokerHealthy := (*broker).Healthy()
+	uptime := time.Since(startupTime)
+
+	jobManifest.Mutex.RLock()
+	jobCount := jobManifest.Size()
+	jobManifest.Mutex.RUnlock()
+
+	status := HealthStatus{
+		Timestamp:  time.Now(),
+		Uptime:     uptime.String(),
+		BrokerType: conf.BrokerType,
+		Connected:  brokerHealthy,
+		JobCount:   jobCount,
+	}
+
+	// Determine health based on type of check
+	if checkReadiness {
+		// Readiness check - must be ready AND healthy
+		if isReady && brokerHealthy {
+			status.Status = "ready"
+			w.WriteHeader(http.StatusOK)
+		} else {
+			status.Status = "not ready"
+			if !isReady {
+				status.Details = "application still initializing"
+			} else if !brokerHealthy {
+				status.Details = "broker connection unhealthy"
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	} else {
+		// Liveness check - application is alive if it can respond
+		if brokerHealthy {
+			status.Status = "healthy"
+			w.WriteHeader(http.StatusOK)
+		} else {
+			status.Status = "unhealthy"
+			status.Details = "broker connection failed - reconnection in progress"
+			// Return 503 for liveness check failures so Kubernetes restarts the pod
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}
+
+	// Log health check failures for debugging
+	if status.Status != "healthy" && status.Status != "ready" {
+		println(fmt.Sprintf("[AMPS] Health check failed: %s - %s", status.Status, status.Details))
+	}
+
+	json.NewEncoder(w).Encode(status)
+}
+
+// handleDetailedHealthCheck provides comprehensive health and diagnostic information
+func handleDetailedHealthCheck(w http.ResponseWriter, req *http.Request, broker *broker.Shim, jobManifest *job.Manifest, conf *config.Config) {
+	w.Header().Set("Content-Type", "application/json")
+
+	brokerHealthy := (*broker).Healthy()
+	uptime := time.Since(startupTime)
+
+	jobManifest.Mutex.RLock()
+	jobCount := jobManifest.Size()
+	jobs := make(map[string]interface{})
+	for id, job := range jobManifest.Jobs {
+		jobs[id] = map[string]interface{}{
+			"created": job.Created.Format(time.RFC3339),
+			"age":     time.Since(job.Created).String(),
+		}
+	}
+	jobManifest.Mutex.RUnlock()
+
+	// Get detailed broker diagnostics
+	brokerDetails := (*broker).GetHealthDetails()
+
+	detailedStatus := map[string]interface{}{
+		"status":         "healthy",
+		"timestamp":      time.Now().Format(time.RFC3339),
+		"uptime":         uptime.String(),
+		"uptime_seconds": uptime.Seconds(),
+		"ready":          isReady,
+		"broker_type":    conf.BrokerType,
+		"broker_healthy": brokerHealthy,
+		"broker_details": brokerDetails,
+		"jobs": map[string]interface{}{
+			"count":           jobCount,
+			"max_concurrency": conf.MaxConcurrency,
+			"active_jobs":     jobs,
+		},
+		"config": map[string]interface{}{
+			"worker_id":       conf.WorkerID,
+			"broker_subject":  conf.BrokerSubject,
+			"job_timeout":     conf.JobTimeout,
+			"metrics_enabled": conf.MetricsEnabled,
+		},
+	}
+
+	if !brokerHealthy {
+		detailedStatus["status"] = "unhealthy"
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	json.NewEncoder(w).Encode(detailedStatus)
 }

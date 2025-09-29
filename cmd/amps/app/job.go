@@ -125,9 +125,15 @@ func JobAcknowledge(
 
 	// Acknowledge the RabbitMQ message now that the job is completed successfully
 	if jobItem.Delivery != nil {
+		// Always attempt acknowledgment - let AMQP layer handle connection issues
 		ackErr := jobItem.Delivery.Ack(false)
 		if ackErr != nil {
-			println("[AMPS] error acknowledging RabbitMQ message:", ackErr.Error())
+			// Check if this is a stale delivery from a reconnected connection
+			if ackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
+				println("[AMPS] message acknowledgment skipped - connection was reconnected, message will be redelivered")
+			} else {
+				println("[AMPS] error acknowledging RabbitMQ message:", ackErr.Error())
+			}
 		}
 	}
 
@@ -184,9 +190,15 @@ func JobReject(
 
 	// Nack the RabbitMQ message to requeue it since the job was rejected
 	if jobItem.Delivery != nil {
+		// Always attempt nack - let AMQP layer handle connection issues
 		nackErr := jobItem.Delivery.Nack(false, true)
 		if nackErr != nil {
-			println("[AMPS] error nacking RabbitMQ message:", nackErr.Error())
+			// Check if this is a stale delivery from a reconnected connection
+			if nackErr.Error() == "Exception (504) Reason: \"channel/connection is not open\"" {
+				println("[AMPS] message nack skipped - connection was reconnected, message will be redelivered")
+			} else {
+				println("[AMPS] error nacking RabbitMQ message:", nackErr.Error())
+			}
 		}
 	}
 

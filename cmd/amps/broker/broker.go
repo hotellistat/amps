@@ -29,6 +29,9 @@ type Shim interface {
 	// Healthcheck to verify that the broker is not stuck. This will restart the container if it fails and healthchecks are set up correctly
 	Healthy() bool
 
+	// Get detailed health information for monitoring and debugging
+	GetHealthDetails() map[string]interface{}
+
 	// Publish new message to broker. This is used for chaining events.
 	PublishMessage(event.Event) error
 }
