@@ -569,6 +569,7 @@ func (broker *AMQPBroker) Start() error {
 			if err != nil {
 				fmt.Println("[AMPS] message handler error:", err.Error())
 				localHub.CaptureException(err)
+				d.Nack(false, true)
 			}
 		}
 		println("[AMPS] message consumer goroutine ended")
