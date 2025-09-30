@@ -467,6 +467,7 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 
 	if broker.jobManifest.HasJob(eventID) {
 		broker.jobManifest.Mutex.Unlock()
+		msg.Nack(false, false)
 		return errors.New("[AMPS] Job ID: " + eventID + " already exists")
 	}
 
@@ -569,7 +570,6 @@ func (broker *AMQPBroker) Start() error {
 			if err != nil {
 				fmt.Println("[AMPS] message handler error:", err.Error())
 				localHub.CaptureException(err)
-				d.Nack(false, true)
 			}
 		}
 		println("[AMPS] message consumer goroutine ended")
