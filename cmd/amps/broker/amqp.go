@@ -196,6 +196,21 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		broker.busy = &sync.Mutex{}
 		broker.connMutex.Unlock()
 
+		// Clean up jobs with AMQP deliveries since they'll be redelivered by RabbitMQ
+		// after reconnection. This prevents "already exists" errors on redelivery.
+		broker.jobManifest.Mutex.Lock()
+		staleCount := 0
+		for id, job := range broker.jobManifest.Jobs {
+			if job.Delivery != nil {
+				delete(broker.jobManifest.Jobs, id)
+				staleCount++
+			}
+		}
+		broker.jobManifest.Mutex.Unlock()
+		if staleCount > 0 {
+			println("[AMPS] cleaned up", staleCount, "stale jobs from manifest - they will be redelivered")
+		}
+
 		connectErrorChan := make(chan error, 10)
 
 		println("[AMPS] starting connection attempt to", uri)
