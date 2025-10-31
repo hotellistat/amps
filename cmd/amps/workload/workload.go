@@ -25,7 +25,7 @@ func Trigger(
 		Timeout: conf.WorkloadResponseTimeout,
 	}
 
-	resp, err := client.Post(conf.WorkloadAddress, "application/json", bytes.NewBuffer(eventData))
+	resp, err := client.Post(conf.WorkloadAddress, "application/cloudevents+json", bytes.NewBuffer(eventData))
 	if err != nil {
 		return err
 	}
