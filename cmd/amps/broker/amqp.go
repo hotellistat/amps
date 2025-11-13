@@ -1,9 +1,12 @@
 package broker
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"sync"
 	"time"
 
@@ -14,10 +17,22 @@ import (
 	"github.com/hotellistat/amps/cmd/amps/job"
 	"github.com/hotellistat/amps/cmd/amps/workload"
 	"github.com/streadway/amqp"
-	"k8s.io/apimachinery/pkg/util/json"
 )
 
-// AMQPBroker represents the primary AMQP communication instance
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   AMQP Broker Struct
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// The AMQPBroker struct is the core of AMPS’s RabbitMQ integration. Each background
+// service runs an instance of this broker beside it. The broker handles:
+//
+// - Connecting and reconnecting to RabbitMQ
+// - Publishing and consuming messages
+// - Managing goroutines safely via context cancellation
+// - Monitoring connection health and triggering reconnections when needed
+//
+
 type AMQPBroker struct {
 	running              bool
 	connected            bool
@@ -29,8 +44,8 @@ type AMQPBroker struct {
 	consumeChannel       *amqp.Channel
 	publishChannel       *amqp.Channel
 	connMutex            *sync.RWMutex
-	shutdownChan         chan bool
-	isShuttingDown       bool
+
+	// FIX: Removed 'isShuttingDown' bool — context now handles safe shutdown signaling
 	lastConnected        time.Time
 	reconnectCount       int
 	lastHealthCheck      time.Time
@@ -38,10 +53,20 @@ type AMQPBroker struct {
 	fullyInitialized     bool
 	startupTime          time.Time
 	lastReconnectAttempt time.Time
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-// This function retries a server connection infinitely with exponential backoff,
-// until it manages to establish a connection to the server.
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Connection Establishment with Exponential Backoff
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Continuously tries to connect to the AMQP broker using exponential backoff.
+// Exits gracefully if the context is canceled (during shutdown).
+//
+
 func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub *sentry.Hub) *amqp.Connection {
 	localHub.ConfigureScope(func(scope *sentry.Scope) {
 		scope.SetTag("goroutine", "amqpConnect")
@@ -52,18 +77,15 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 	baseBackoff := 1 * time.Second
 
 	for {
-		if broker.isShuttingDown {
+		select {
+		case <-broker.ctx.Done():
+			println("[AMPS] connection attempts cancelled via context")
 			return nil
+		default:
 		}
 
 		conn, err := amqp.Dial(uri)
 		if err == nil {
-			broker.connMutex.Lock()
-			broker.connected = true
-			broker.lastConnected = time.Now()
-			broker.reconnectCount++
-			broker.connMutex.Unlock()
-			println("[AMPS] successfully connected to AMQP broker (attempt", broker.reconnectCount, ") - establishing channels...")
 			return conn
 		}
 
@@ -73,7 +95,7 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 		localHub.CaptureException(err)
 		println("[AMPS] dial exception:", err.Error(), "- retrying in", backoff, "(attempt", attempt, ")")
 
-		// Don't block on errorChan if no one is reading it
+		// Prevent blocking if the error channel isn’t being read
 		select {
 		case errorChan <- err:
 		default:
@@ -81,22 +103,31 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 
 		select {
 		case <-time.After(backoff):
-			println("[AMPS] retrying connection after backoff...")
-		case <-broker.shutdownChan:
+		case <-broker.ctx.Done():
 			println("[AMPS] connection attempts cancelled due to shutdown")
 			return nil
 		}
 	}
 }
 
-// This function creates channels with retry logic and sets up QoS-based concurrency control
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Channel Creation with Retry Logic
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Creates consumer and publisher channels from the current AMQP connection.
+// Uses retry logic to handle transient errors, sets QoS (prefetch) for concurrency.
+//
+
 func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 	maxRetries := 5
 	baseDelay := 1 * time.Second
 
 	for retry := 0; retry < maxRetries; retry++ {
-		if broker.isShuttingDown {
+		select {
+		case <-broker.ctx.Done():
 			return errors.New("shutting down")
+		default:
 		}
 
 		broker.connMutex.RLock()
@@ -115,9 +146,6 @@ func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 			continue
 		}
 
-		// Set QoS prefetch count to MaxConcurrency. This replaces the previous manual
-		// start/stop broker logic. RabbitMQ will only deliver up to MaxConcurrency
-		// unacknowledged messages to this consumer, providing automatic concurrency control.
 		qosErr := consumeChannel.Qos(broker.config.MaxConcurrency, 0, false)
 		if qosErr != nil {
 			localHub.CaptureException(qosErr)
@@ -148,9 +176,15 @@ func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 	return errors.New("failed to create channels after all retries")
 }
 
-// This routine will always run in the background as a goroutine and will
-// initiate a reconnect as soon as a new event gets pushed into the
-// reconnectChan channel
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Connection Routine (Main Loop)
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Handles the entire AMQP connection lifecycle. Responds to reconnection signals,
+// cleans up stale resources, and safely reinitializes channels and consumers.
+//
+
 func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 	localHub := sentry.CurrentHub().Clone()
 	localHub.ConfigureScope(func(scope *sentry.Scope) {
@@ -159,7 +193,6 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 
 	reconnectionAttempt := 0
 
-	// Loop indefinitely, checking for reconnection signals
 	for {
 		select {
 		case <-broker.reconnectChan:
@@ -167,20 +200,18 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 			broker.connMutex.Lock()
 			broker.lastReconnectAttempt = time.Now()
 			broker.connMutex.Unlock()
-			println("[AMPS] reconnection signal received (attempt", reconnectionAttempt, ")")
-		case <-broker.shutdownChan:
+			println("[AMPS] reconnection signal received (attempt", reconnectionAttempt, ") - Goroutines:", runtime.NumGoroutine())
+
+		case <-broker.ctx.Done():
 			println("[AMPS] reconnection routine shutting down")
 			return
 		}
-		if broker.isShuttingDown {
-			println("[AMPS] skipping reconnection - shutting down")
-			return
-		}
 
+		// Reset all resources before reconnecting
 		broker.connMutex.Lock()
 		broker.running = false
 		broker.connected = false
-		broker.fullyInitialized = false // Reset initialization state on reconnection
+		broker.fullyInitialized = false
 		if broker.consumeChannel != nil {
 			broker.consumeChannel.Close()
 			broker.consumeChannel = nil
@@ -196,8 +227,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		broker.busy = &sync.Mutex{}
 		broker.connMutex.Unlock()
 
-		// Clean up jobs with AMQP deliveries since they'll be redelivered by RabbitMQ
-		// after reconnection. This prevents "already exists" errors on redelivery.
+		// Remove stale jobs from manifest (will be redelivered later)
 		broker.jobManifest.Mutex.Lock()
 		staleCount := 0
 		for id, job := range broker.jobManifest.Jobs {
@@ -212,21 +242,24 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		}
 
 		connectErrorChan := make(chan error, 10)
-
-		println("[AMPS] starting connection attempt to", uri)
-
-		// Start a goroutine to consume connection errors
 		go func() {
-			for err := range connectErrorChan {
-				if err != nil {
-					// Just log the error, amqpConnect handles retries internally
-					println("[AMPS] connection error:", err.Error())
+			for {
+				select {
+				case <-broker.ctx.Done():
+					return
+				case err, ok := <-connectErrorChan:
+					if !ok {
+						return
+					}
+					if err != nil {
+						fmt.Println("[AMPS] connection error:", err.Error())
+					}
 				}
 			}
 		}()
 
 		conn := broker.amqpConnect(uri, connectErrorChan, localHub)
-		close(connectErrorChan) // Close the channel when connection attempt is done
+		close(connectErrorChan) // FIX: Ensures goroutine exits cleanly
 
 		if conn == nil {
 			println("[AMPS] connection attempt failed - shutdown was requested")
@@ -237,117 +270,182 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		broker.connection = conn
 		broker.connMutex.Unlock()
 
-		// Create a dedicated close notification channel for this connection
 		closeNotify := make(chan *amqp.Error, 1)
 		conn.NotifyClose(closeNotify)
 
-		// Start a goroutine to monitor this specific connection's close events
+		// Watches for unexpected connection closure
 		go func(connectionAttempt int) {
-			closeErr := <-closeNotify
-			if closeErr != nil && !broker.isShuttingDown {
-				broker.connMutex.Lock()
-				uptime := time.Since(broker.lastConnected)
-				broker.connMutex.Unlock()
-
-				println("[AMPS] connection", connectionAttempt, "closed after", uptime, ":", closeErr.Error())
-
-				// Signal reconnection needed with non-blocking send
-				select {
-				case broker.reconnectChan <- true:
-					println("[AMPS] reconnection signal sent successfully")
-				default:
-					println("[AMPS] reconnection channel full - forcing signal")
-					// Force drain one item and add our signal
+			select {
+			case closeErr := <-closeNotify:
+				if closeErr != nil && broker.ctx.Err() == nil {
+					broker.connMutex.Lock()
+					uptime := time.Since(broker.lastConnected)
+					broker.connMutex.Unlock()
+					println("[AMPS] connection", connectionAttempt, "closed after", uptime, ":", closeErr.Error())
 					select {
-					case <-broker.reconnectChan:
+					case broker.reconnectChan <- true:
 					default:
 					}
-					broker.reconnectChan <- true
 				}
-			} else if closeErr == nil {
-				println("[AMPS] connection", connectionAttempt, "closed gracefully")
+			case <-broker.ctx.Done():
+				return
 			}
 		}(reconnectionAttempt)
 
-		// Create channels with retry logic
+		// Create channels
 		err := broker.createChannels(localHub)
 		if err != nil {
 			localHub.CaptureException(err)
 			println("[AMPS] failed to create channels:", err.Error(), "- will retry")
-			// Trigger reconnection after a short delay
-			go func() {
-				time.Sleep(2 * time.Second)
-				select {
-				case broker.reconnectChan <- true:
-					println("[AMPS] reconnection scheduled after channel creation failure")
-				default:
-					println("[AMPS] reconnection already queued after channel failure")
-				}
-			}()
+			select {
+			case <-time.After(2 * time.Second):
+			case <-broker.ctx.Done():
+				return
+			}
+			select {
+			case broker.reconnectChan <- true:
+			default:
+			}
 			continue
 		}
 
+		// Mark broker as connected
+		broker.connMutex.Lock()
+		broker.connected = true
+		broker.lastConnected = time.Now()
+		broker.connMutex.Unlock()
+
+		// Start consuming
 		startErr := broker.Start()
 		if startErr != nil {
 			localHub.CaptureException(startErr)
 			println("[AMPS] failed to start consumer:", startErr.Error(), "- will retry")
-			// Trigger reconnection after a short delay
-			go func() {
-				time.Sleep(2 * time.Second)
-				select {
-				case broker.reconnectChan <- true:
-					println("[AMPS] reconnection scheduled after consumer start failure")
-				default:
-					println("[AMPS] reconnection already queued after consumer failure")
-				}
-			}()
+			select {
+			case <-time.After(2 * time.Second):
+			case <-broker.ctx.Done():
+				return
+			}
+			select {
+			case broker.reconnectChan <- true:
+			default:
+			}
 			continue
 		}
 
-		// Mark broker as fully initialized after successful start
 		broker.connMutex.Lock()
 		broker.fullyInitialized = true
 		broker.connMutex.Unlock()
 		println("[AMPS] broker fully initialized and ready to process messages")
 
-		// Notify the connectedChan channel, that a connection has been successfully established
 		select {
 		case connected <- true:
 		default:
-			// Channel might be full or closed, that's okay
 		}
 	}
 }
 
-// Initialize creates a new AMQP connection
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Start Consumer
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Creates a consumer on the broker’s queue, listens for messages, and passes each
+// message to the handler function. This runs as a goroutine and respects context
+// cancellation for graceful shutdown.
+//
+
+func (broker *AMQPBroker) Start() error {
+	if broker.busy == nil {
+		broker.busy = &sync.Mutex{}
+	}
+	broker.busy.Lock()
+	defer broker.busy.Unlock()
+
+	if broker.running {
+		return nil
+	}
+
+	broker.connMutex.RLock()
+	consumeChannel := broker.consumeChannel
+	connected := broker.connected
+	broker.connMutex.RUnlock()
+
+	if !connected || consumeChannel == nil {
+		return errors.New("not connected or channel not available")
+	}
+
+	messages, err := consumeChannel.Consume(
+		broker.config.BrokerSubject,
+		broker.config.WorkerID,
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		fmt.Println("[AMPS] Could not start consumer:", err.Error())
+		return err
+	}
+
+	broker.running = true
+	println("[AMPS] message consumer started successfully")
+
+	go func() {
+		for {
+			select {
+			case <-broker.ctx.Done():
+				println("[AMPS] message consumer stopped by context")
+				return
+			case d, ok := <-messages:
+				if !ok {
+					println("[AMPS] message channel closed")
+					return
+				}
+				err := broker.messageHandler(d)
+				if err != nil {
+					println("[AMPS] message handler error:", err.Error())
+				}
+			}
+		}
+	}()
+	return nil
+}
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Initialize Broker
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// This sets up the broker, launches the main connection loop, health monitor,
+// and reconnection watchdog. It also sends the first reconnect signal to trigger
+// initial connection to RabbitMQ.
+//
+
 func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Manifest) bool {
 	broker.config = config
 	broker.jobManifest = jobManifest
 	broker.connMutex = &sync.RWMutex{}
-	broker.shutdownChan = make(chan bool, 1)
-	broker.isShuttingDown = false
 	broker.fullyInitialized = false
 	broker.startupTime = time.Now()
-	uri := config.BrokerDsn
 
-	// Create a new reconnectChan with larger buffer to prevent blocking
+	// Create a cancellable context to control all goroutines
+	broker.ctx, broker.cancel = context.WithCancel(context.Background())
+
+	// Buffered channel prevents blocking on rapid reconnect signals
 	broker.reconnectChan = make(chan bool, 20)
-
 	connectedChan := make(chan bool, 1)
 
-	go broker.amqpConnectRoutine(uri, connectedChan)
+	// Launch the main connection management routine
+	go broker.amqpConnectRoutine(config.BrokerDsn, connectedChan)
 
-	// Send initial reconnection signal to trigger initial connect to the server
+	// Trigger the initial connection
 	broker.reconnectChan <- true
 
-	// Start periodic health monitoring
+	// Start background monitors
 	go broker.startHealthMonitor()
-
-	// Start reconnection watchdog
 	go broker.startReconnectionWatchdog()
 
-	// Wait for initial connection confirmation in the connectedChan channel
-	// with timeout to prevent indefinite blocking
+	// Wait until connected or timeout
 	select {
 	case success := <-connectedChan:
 		return success
@@ -357,9 +455,23 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	}
 }
 
-// publishWithRetry attempts to publish a message with retries
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Publish with Retry
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Publishes a message to the queue with exponential backoff retries.
+// Each attempt checks for connection status and context cancellation.
+//
+
 func (broker *AMQPBroker) publishWithRetry(routingKey string, body []byte, maxRetries int) error {
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		select {
+		case <-broker.ctx.Done():
+			return errors.New("shutting down")
+		default:
+		}
+
 		broker.connMutex.RLock()
 		publishChannel := broker.publishChannel
 		connected := broker.connected
@@ -386,7 +498,7 @@ func (broker *AMQPBroker) publishWithRetry(routingKey string, body []byte, maxRe
 		)
 
 		if err == nil {
-			return nil // Success
+			return nil
 		}
 
 		println("[AMPS] publish failed, attempt", attempt+1, ":", err.Error())
@@ -398,18 +510,24 @@ func (broker *AMQPBroker) publishWithRetry(routingKey string, body []byte, maxRe
 	return errors.New("failed to publish after all retries")
 }
 
-// Teardown the AMQP connection and all AMQP services
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Teardown Broker
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Gracefully shuts down the broker and all goroutines by canceling the context,
+// closing channels and connections, and cleaning up state safely.
+//
+
 func (broker *AMQPBroker) Teardown() {
 	println("[AMPS] tearing down broker")
-	broker.isShuttingDown = true
 
-	// Signal shutdown to all goroutines
-	select {
-	case broker.shutdownChan <- true:
-	default:
+	// Cancel context to stop all background goroutines
+	if broker.cancel != nil {
+		broker.cancel()
 	}
 
-	// Give goroutines a moment to process shutdown signal
+	// Give goroutines a brief moment to exit cleanly
 	time.Sleep(100 * time.Millisecond)
 
 	broker.connMutex.Lock()
@@ -439,19 +557,17 @@ func (broker *AMQPBroker) Teardown() {
 		broker.connection = nil
 	}
 
-	// Close reconnection channel to stop the reconnection goroutine
-	if broker.reconnectChan != nil {
-		close(broker.reconnectChan)
-		broker.reconnectChan = nil
-	}
-
 	broker.connected = false
 	broker.running = false
 }
 
-func (broker *AMQPBroker) IsRunning() bool {
-	return broker.running
-}
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Job Delivery Wrapper
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Provides simple wrappers for ACK/NACK operations on consumed messages.
+//
 
 type AmqpMessageWrapper struct {
 	message amqp.Delivery
@@ -464,6 +580,19 @@ func (wrapper AmqpMessageWrapper) Ack(multiple bool) error {
 func (wrapper AmqpMessageWrapper) Nack(multiple, requeue bool) error {
 	return wrapper.message.Nack(multiple, requeue)
 }
+
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Message Handler
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Processes each incoming message:
+// - Unmarshals it into a CloudEvent
+// - Checks if the job already exists (deduplication)
+// - Inserts it into the job manifest
+// - Calls workload.Trigger() to process
+// - On error, NACKs and reschedules the job
+//
 
 func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 	event, err := cloudevent.Unmarshal(msg.Body)
@@ -486,19 +615,14 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		return errors.New("[AMPS] Job ID: " + eventID + " already exists")
 	}
 
-	// Insert new job into queue with AMQP delivery for later acknowledgment.
-	// Concurrency is now controlled by RabbitMQ QoS prefetch limit rather than manually stopping/starting the consumer.
 	messageWrapper := AmqpMessageWrapper{msg}
-	broker.jobManifest.InsertJobWithDelivery(
-		eventID,
-		messageWrapper,
-	)
+	broker.jobManifest.InsertJobWithDelivery(eventID, messageWrapper)
 	broker.jobManifest.Mutex.Unlock()
 
-	// Trigger the workload endpoint by sending the job via POST
+	// Send job to workload endpoint
 	workloadErr := workload.Trigger(event, broker.config)
 	if workloadErr != nil {
-		println("[AMPS]", workloadErr.Error())
+		fmt.Println("[AMPS]", workloadErr.Error())
 		println("[AMPS] Rejecting job for rescheduling")
 
 		broker.jobManifest.Mutex.Lock()
@@ -511,87 +635,22 @@ func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
 		broker.jobManifest.DeleteJob(eventID)
 		broker.jobManifest.Mutex.Unlock()
 
-		// Negative acknowledge and reschedule job for a different worker to handle
-		// since the workload on this instance seems to not be working
+		// Negative acknowledgment and requeue
 		nackErr := msg.Nack(false, true)
 		if nackErr != nil {
 			println("[AMPS] error nacking message:", nackErr.Error())
 		}
 	}
-	// Note: We no longer acknowledge the message here. The message will be acknowledged
-	// only when the workload calls /acknowledge or /reject endpoints, ensuring proper
-	// message reliability and preventing message loss if the workload fails.
-
 	return nil
 }
 
-// Start creates a new subscription and executes the messageCallback on new messages
-func (broker *AMQPBroker) Start() error {
-	if broker.busy == nil {
-		broker.busy = &sync.Mutex{}
-	}
-
-	broker.busy.Lock()
-	defer broker.busy.Unlock()
-
-	if broker.running {
-		return nil
-	}
-
-	broker.connMutex.RLock()
-	consumeChannel := broker.consumeChannel
-	connected := broker.connected
-	broker.connMutex.RUnlock()
-
-	if !connected || consumeChannel == nil {
-		return errors.New("not connected or channel not available")
-	}
-
-	messages, err := consumeChannel.Consume(
-		broker.config.BrokerSubject,
-		broker.config.WorkerID,
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-
-	if err != nil {
-		println("[AMPS] Could not start consumer:", err.Error())
-		return err
-	}
-
-	broker.running = true
-	println("[AMPS] message consumer started successfully")
-
-	go func(localHub *sentry.Hub) {
-		localHub.ConfigureScope(func(scope *sentry.Scope) {
-			scope.SetTag("goroutine", "messageConsumer")
-		})
-
-		messageCount := 0
-		for d := range messages {
-			if broker.isShuttingDown {
-				break
-			}
-
-			messageCount++
-			if messageCount == 1 {
-				println("[AMPS] processing first message - system fully operational")
-			}
-
-			err := broker.messageHandler(d)
-			if err != nil {
-				fmt.Println("[AMPS] message handler error:", err.Error())
-				localHub.CaptureException(err)
-			}
-		}
-		println("[AMPS] message consumer goroutine ended")
-	}(sentry.CurrentHub().Clone())
-
-	return nil
-}
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Stop Consumer
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Cancels message consumption gracefully without shutting down the broker itself.
+//
 
 func (broker *AMQPBroker) Stop() error {
 	if broker.busy == nil {
@@ -612,7 +671,7 @@ func (broker *AMQPBroker) Stop() error {
 	if consumeChannel != nil {
 		err := consumeChannel.Cancel(broker.config.WorkerID, false)
 		if err != nil {
-			println("[AMPS] Could not cancel consumer:", err.Error())
+			fmt.Println("[AMPS] Could not cancel consumer:", err.Error())
 			return err
 		}
 	}
@@ -621,7 +680,14 @@ func (broker *AMQPBroker) Stop() error {
 	return nil
 }
 
-// PublishMessage publishes a message to the queue with retry logic
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Publish CloudEvent Message
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Marshals a CloudEvent into JSON and publishes it to the AMQP queue.
+//
+
 func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 	encodedData, marshalErr := json.Marshal(event)
 	if marshalErr != nil {
@@ -630,40 +696,45 @@ func (broker *AMQPBroker) PublishMessage(event event.Event) error {
 
 	err := broker.publishWithRetry(event.Context.GetType(), encodedData, 3)
 	if err != nil {
-		println("[AMPS] Could not publish result:", err.Error())
+		fmt.Println("[AMPS] Could not publish result:", err.Error())
 		return err
 	}
 
 	return nil
 }
 
-// Healthy checks the health of the broker with comprehensive validation
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Health Check
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Performs an in-depth health check of the broker’s state and triggers a
+// reconnection signal if any part of the connection is unhealthy.
+//
+
 func (broker *AMQPBroker) Healthy() bool {
 	broker.connMutex.Lock()
 	defer broker.connMutex.Unlock()
 
 	broker.lastHealthCheck = time.Now()
 
-	// Check if we're shutting down
-	if broker.isShuttingDown {
+	// Context canceled = shutting down
+	if broker.ctx.Err() != nil {
 		return false
 	}
 
-	// During initial startup, be more lenient - don't report healthy until fully initialized
+	// Allow startup grace period
 	if time.Since(broker.startupTime) < 10*time.Second && !broker.fullyInitialized {
 		return false
 	}
 
-	// Check basic connection state
 	if !broker.connected || broker.connection == nil {
 		broker.consecutiveFailures++
 		return false
 	}
 
-	// Check if connection is actually closed
 	if broker.connection.IsClosed() {
 		broker.consecutiveFailures++
-		// Trigger reconnection if not already in progress
 		select {
 		case broker.reconnectChan <- true:
 			println("[AMPS] health check detected closed connection, triggering reconnect")
@@ -672,59 +743,28 @@ func (broker *AMQPBroker) Healthy() bool {
 		return false
 	}
 
-	// Check channels are available and not closed
 	if broker.consumeChannel == nil || broker.publishChannel == nil {
 		broker.consecutiveFailures++
 		return false
 	}
 
-	// Test if channels are still functional by checking if they're closed
-	consumeChannelClosed := false
-	publishChannelClosed := false
-
-	select {
-	case <-broker.consumeChannel.NotifyClose(make(chan *amqp.Error, 1)):
-		consumeChannelClosed = true
-	default:
-	}
-
-	select {
-	case <-broker.publishChannel.NotifyClose(make(chan *amqp.Error, 1)):
-		publishChannelClosed = true
-	default:
-	}
-
-	if consumeChannelClosed || publishChannelClosed {
-		broker.consecutiveFailures++
-		println("[AMPS] health check detected closed channels, triggering reconnect")
-		select {
-		case broker.reconnectChan <- true:
-		default:
-		}
-		return false
-	}
-
-	// If we're not fully initialized yet, wait
 	if !broker.fullyInitialized {
 		return false
 	}
 
-	// Give a small grace period after full initialization to avoid startup race conditions
-	if time.Since(broker.lastConnected) < 500*time.Millisecond {
-		return false
-	}
-
-	// If we've had too many consecutive failures recently, be more cautious
-	if broker.consecutiveFailures > 3 && time.Since(broker.lastConnected) < 30*time.Second {
-		return false
-	}
-
-	// Reset failure count on successful health check
 	broker.consecutiveFailures = 0
 	return true
 }
 
-// GetHealthDetails returns detailed health information for monitoring
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Health Details Snapshot
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Returns a structured map of the broker’s current state for metrics or API
+// inspection.
+//
+
 func (broker *AMQPBroker) GetHealthDetails() map[string]interface{} {
 	broker.connMutex.RLock()
 	defer broker.connMutex.RUnlock()
@@ -739,7 +779,7 @@ func (broker *AMQPBroker) GetHealthDetails() map[string]interface{} {
 		"reconnect_count":        broker.reconnectCount,
 		"consecutive_failures":   broker.consecutiveFailures,
 		"last_health_check":      broker.lastHealthCheck.Format(time.RFC3339),
-		"is_shutting_down":       broker.isShuttingDown,
+		"is_shutting_down":       broker.ctx.Err() != nil,
 	}
 
 	if broker.connection != nil {
@@ -760,7 +800,15 @@ func (broker *AMQPBroker) GetHealthDetails() map[string]interface{} {
 	return details
 }
 
-// startHealthMonitor runs a periodic health check to detect missed connection drops
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Health Monitor (Background Goroutine)
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Periodically checks connection health and issues reconnection signals
+// if the connection is found to be closed unexpectedly.
+//
+
 func (broker *AMQPBroker) startHealthMonitor() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -768,19 +816,13 @@ func (broker *AMQPBroker) startHealthMonitor() {
 	for {
 		select {
 		case <-ticker.C:
-			if broker.isShuttingDown {
-				return
-			}
-
 			broker.connMutex.RLock()
 			connected := broker.connected
 			connection := broker.connection
-			lastConnected := broker.lastConnected
 			broker.connMutex.RUnlock()
 
-			// If we think we're connected but connection is actually closed
-			if connected && connection != nil && connection.IsClosed() {
-				println("[AMPS] health monitor detected stale connection, triggering reconnect")
+			if connected && (connection == nil || connection.IsClosed()) {
+				println("[AMPS] health monitor detected closed connection, triggering reconnect")
 				select {
 				case broker.reconnectChan <- true:
 					println("[AMPS] health monitor reconnection signal sent")
@@ -788,80 +830,62 @@ func (broker *AMQPBroker) startHealthMonitor() {
 					println("[AMPS] health monitor reconnection already queued")
 				}
 			}
-
-			// If connection has been up for a while, do a simple publish test
-			if connected && connection != nil && !connection.IsClosed() &&
-				time.Since(lastConnected) > 60*time.Second {
-				// Try a simple channel operation to verify connection health
-				broker.connMutex.RLock()
-				publishChannel := broker.publishChannel
-				broker.connMutex.RUnlock()
-
-				if publishChannel != nil {
-					// Test channel health by checking if it's closed
-					select {
-					case <-publishChannel.NotifyClose(make(chan *amqp.Error, 1)):
-						println("[AMPS] health monitor detected closed channel, triggering reconnect")
-						select {
-						case broker.reconnectChan <- true:
-							println("[AMPS] health monitor channel reconnection signal sent")
-						default:
-							println("[AMPS] health monitor channel reconnection already queued")
-						}
-					default:
-						// Channel is healthy
-					}
-				}
-			}
-
-		case <-broker.shutdownChan:
+		case <-broker.ctx.Done():
 			println("[AMPS] health monitor shutting down")
 			return
 		}
 	}
 }
 
-// startReconnectionWatchdog monitors reconnection attempts and forces retry if stuck
+//
+// ────────────────────────────────────────────────────────────────────────────────
+//   Reconnection Watchdog (Failsafe Timer)
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// Acts as a failsafe that triggers a forced reconnection if the broker remains
+// disconnected or stuck for too long (e.g., network partitions).
+//
+
 func (broker *AMQPBroker) startReconnectionWatchdog() {
-	ticker := time.NewTicker(60 * time.Second) // Check every minute
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if broker.isShuttingDown {
-				return
-			}
-
 			broker.connMutex.RLock()
 			connected := broker.connected
 			lastReconnect := broker.lastReconnectAttempt
 			broker.connMutex.RUnlock()
 
-			// If we're not connected and haven't attempted reconnection recently
 			if !connected && (lastReconnect.IsZero() || time.Since(lastReconnect) > 90*time.Second) {
 				println("[AMPS] reconnection watchdog: forcing reconnection attempt")
 				broker.connMutex.Lock()
 				broker.lastReconnectAttempt = time.Now()
 				broker.connMutex.Unlock()
 
-				// Force a reconnection signal
 				select {
 				case broker.reconnectChan <- true:
 					println("[AMPS] watchdog reconnection signal sent")
 				default:
-					// Channel might be full, drain and retry
-					for len(broker.reconnectChan) > 0 {
-						<-broker.reconnectChan
-					}
-					broker.reconnectChan <- true
-					println("[AMPS] watchdog forced reconnection signal after draining")
+					println("[AMPS] watchdog reconnection signal already queued")
 				}
 			}
-
-		case <-broker.shutdownChan:
+		case <-broker.ctx.Done():
 			println("[AMPS] reconnection watchdog shutting down")
 			return
 		}
 	}
+}
+
+
+// IsRunning returns true if the broker's consumer loop is currently active.
+// A read lock is used for thread-safe access to the shared 'running' flag.
+func (broker *AMQPBroker) IsRunning() bool {
+	if broker == nil || broker.connMutex == nil {
+		return false
+	}
+	broker.connMutex.RLock()
+	defer broker.connMutex.RUnlock()
+	return broker.running
 }
