@@ -44,8 +44,6 @@ type AMQPBroker struct {
 	consumeChannel       *amqp.Channel
 	publishChannel       *amqp.Channel
 	connMutex            *sync.RWMutex
-
-	// FIX: Removed 'isShuttingDown' bool — context now handles safe shutdown signaling
 	lastConnected        time.Time
 	reconnectCount       int
 	lastHealthCheck      time.Time
