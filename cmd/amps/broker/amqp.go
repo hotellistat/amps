@@ -361,22 +361,24 @@ func (broker *AMQPBroker) Start() error {
 	broker.busy.Lock()
 	defer broker.busy.Unlock()
 
-	broker.connMutex.RLock()
-	alreadyRunning := broker.running
-	broker.connMutex.RUnlock()
-	if alreadyRunning {
-		return nil
+	// Hold WRITE lock across the entire Start critical section
+    broker.connMutex.Lock()
+    defer broker.connMutex.Unlock()
+
+	// --- 1. Check state atomically ---
+	if broker.running  {
+		return nil // Already running
 	}
 
-	broker.connMutex.RLock()
 	consumeChannel := broker.consumeChannel
-	connected := broker.connected
-	broker.connMutex.RUnlock()
+    connected := broker.connected
 
+	// --- 2. Validate connection state ---
 	if !connected || consumeChannel == nil {
 		return errors.New("not connected or channel not available")
 	}
 
+	// --- 3. Create consumer under the SAME lock ---
 	messages, err := consumeChannel.Consume(
 		broker.config.BrokerSubject,
 		broker.config.WorkerID,
@@ -390,12 +392,11 @@ func (broker *AMQPBroker) Start() error {
 		fmt.Println("[AMPS] Could not start consumer:", err.Error())
 		return err
 	}
-
-	broker.connMutex.Lock()
-	broker.running = true
-	broker.connMutex.Unlock()
+	// --- 4. Update state atomically ---	
+	broker.running = true	
 	println("[AMPS] message consumer started successfully")
 
+	 // --- 5. Start background goroutine (outside the lock) ---
 	go func() {
 		for {
 			select {
