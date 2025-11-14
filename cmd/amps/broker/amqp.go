@@ -361,7 +361,10 @@ func (broker *AMQPBroker) Start() error {
 	broker.busy.Lock()
 	defer broker.busy.Unlock()
 
-	if broker.running {
+	broker.connMutex.RLock()
+	alreadyRunning := broker.running
+	broker.connMutex.RUnlock()
+	if alreadyRunning {
 		return nil
 	}
 
@@ -388,7 +391,9 @@ func (broker *AMQPBroker) Start() error {
 		return err
 	}
 
+	broker.connMutex.Lock()
 	broker.running = true
+	broker.connMutex.Unlock()
 	println("[AMPS] message consumer started successfully")
 
 	go func() {
@@ -660,7 +665,11 @@ func (broker *AMQPBroker) Stop() error {
 	broker.busy.Lock()
 	defer broker.busy.Unlock()
 
-	if !broker.running {
+	broker.connMutex.RLock()
+	running := broker.running
+	broker.connMutex.RUnlock()
+	if !running {
+
 		return nil
 	}
 
@@ -676,7 +685,9 @@ func (broker *AMQPBroker) Stop() error {
 		}
 	}
 
+	broker.connMutex.Lock()
 	broker.running = false
+	broker.connMutex.Unlock()
 	return nil
 }
 
