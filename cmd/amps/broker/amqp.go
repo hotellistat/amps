@@ -222,7 +222,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 			broker.connection.Close()
 			broker.connection = nil
 		}
-		broker.busy = &sync.Mutex{}
+		
 		broker.connMutex.Unlock()
 
 		// Remove stale jobs from manifest (will be redelivered later)
