@@ -352,10 +352,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 // cancellation for graceful shutdown.
 //
 
-func (broker *AMQPBroker) Start() error {
-	if broker.busy == nil {
-		broker.busy = &sync.Mutex{}
-	}
+func (broker *AMQPBroker) Start() error {	
 	broker.busy.Lock()
 	defer broker.busy.Unlock()
 
@@ -430,6 +427,7 @@ func (broker *AMQPBroker) Initialize(config config.Config, jobManifest *job.Mani
 	broker.jobManifest = jobManifest
 	broker.connMutex = &sync.RWMutex{}
 	broker.fullyInitialized = false
+	broker.busy = &sync.Mutex{}
 	broker.startupTime = time.Now()
 
 	// Create a cancellable context to control all goroutines
