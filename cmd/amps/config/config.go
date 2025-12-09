@@ -26,6 +26,11 @@ type Config struct {
 	JobTimeout              time.Duration `description:"The maximum lifetime of a job. If this is exceeded, a job will be deleted from the queue"`
 	WorkloadAddress         string        `description:"The workload address to which to send the job payload"`
 	WorkloadResponseTimeout time.Duration `description:"The wokrload response timeout, after which the job will be returned to the broker"`
+	// --- new for profiling ---
+    PprofEnabled             bool
+    PprofPort                int      
+    GoroutineMonitorInterval time.Duration
+    GoroutineLeakThreshold   int
 }
 
 // New returns a new Config struct
@@ -49,6 +54,11 @@ func New() *Config {
 		JobTimeout:              GetEnvAsDuration("JOB_TIMEOUT", "2m"),
 		WorkloadAddress:         GetEnv("WORKLOAD_ADDRESS", "http://localhost:5050"),
 		WorkloadResponseTimeout: GetEnvAsDuration("WORKLOAD_RESPONSE_TIMEOUT", "30s"),
+		// --- profiling ---
+		PprofEnabled:             GetEnvAsBool("PPROF_ENABLED", false),
+		PprofPort:                GetEnvAsInt("PPROF_PORT", 6060),		
+		GoroutineMonitorInterval: GetEnvAsDuration("GOROUTINE_MONITOR_INTERVAL", "5m"),
+		GoroutineLeakThreshold:   GetEnvAsInt("GOROUTINE_LEAK_THRESHOLD", 500),
 	}
 }
 

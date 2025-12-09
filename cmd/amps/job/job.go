@@ -1,6 +1,8 @@
 package job
 
 import (
+	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -96,6 +98,11 @@ func (jm *Manifest) InsertJobWithDelivery(ID string, delivery AMQPDelivery) {
 	}
 
 	currentJobCount.Set(float64(jm.Size()))
+	// Only log when job count exceeds a threshold
+	if jm.Size() > 2000 { // tweak threshold later if needed
+		fmt.Println("[AMPS][DIAG] manifest_large_insert size=", jm.Size(),
+			"goroutines=", runtime.NumGoroutine())
+	}
 }
 
 // DeleteJob removes a job if it exists, otherwise throws an error
@@ -109,4 +116,9 @@ func (jm *Manifest) DeleteJob(ID string) {
 	delete(jm.Jobs, ID)
 	messageLifetime.Observe(float64(time.Since(job.Created).Seconds()))
 	currentJobCount.Set(float64(jm.Size()))
+	// --- DIAG ---
+	if jm.Size() == 0 {
+		// Useful for confirming cleanup after reconnects
+		fmt.Println("[AMPS][DIAG] manifest_empty goroutines=", runtime.NumGoroutine())
+	}
 }
