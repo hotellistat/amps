@@ -32,7 +32,6 @@ import (
 // - Managing goroutines safely via context cancellation
 // - Monitoring connection health and triggering reconnections when needed
 //
-
 type AMQPBroker struct {
 	running              bool
 	connected            bool
@@ -84,9 +83,11 @@ func (broker *AMQPBroker) amqpConnect(uri string, errorChan chan error, localHub
 
 		conn, err := amqp.Dial(uri)
 		if err == nil {
+			// --- DIAGNOSTIC ---
+			println("[AMPS][DIAG] amqp_dial_success goroutines=", runtime.NumGoroutine())
 			return conn
 		}
-
+		
 		attempt++
 		backoff := time.Duration(math.Min(float64(baseBackoff)*math.Pow(2, float64(attempt)), float64(maxBackoff)))
 
@@ -165,6 +166,9 @@ func (broker *AMQPBroker) createChannels(localHub *sentry.Hub) error {
 		broker.connMutex.Lock()
 		broker.consumeChannel = consumeChannel
 		broker.publishChannel = publishChannel
+		// --- DIAGNOSTIC ---
+		println("[AMPS][DIAG] channels_opened goroutines=", runtime.NumGoroutine())
+		
 		broker.connMutex.Unlock()
 
 		println("[AMPS] successfully created AMQP channels - starting consumer...")
@@ -194,16 +198,23 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 	for {
 		select {
 		case <-broker.reconnectChan:
-			reconnectionAttempt++
+			reconnectionAttempt++			
 			broker.connMutex.Lock()
+			broker.reconnectCount++
 			broker.lastReconnectAttempt = time.Now()
 			broker.connMutex.Unlock()
 			println("[AMPS] reconnection signal received (attempt", reconnectionAttempt, ") - Goroutines:", runtime.NumGoroutine())
-
-		case <-broker.ctx.Done():
-			println("[AMPS] reconnection routine shutting down")
-			return
-		}
+			// --- DIAGNOSTIC ---
+			broker.jobManifest.Mutex.RLock()
+			jobCount := len(broker.jobManifest.Jobs)
+			broker.jobManifest.Mutex.RUnlock()
+			println("[AMPS][DIAG] reconnect_attempt=", reconnectionAttempt,
+				" goroutines=", runtime.NumGoroutine(),
+				" jobs=", jobCount)
+					case <-broker.ctx.Done():
+						println("[AMPS] reconnection routine shutting down")
+						return
+					}
 
 		// Reset all resources before reconnecting
 		broker.connMutex.Lock()
@@ -280,6 +291,10 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 					uptime := time.Since(broker.lastConnected)
 					broker.connMutex.Unlock()
 					println("[AMPS] connection", connectionAttempt, "closed after", uptime, ":", closeErr.Error())
+					// --- DIAGNOSTIC ---
+					println("[AMPS][DIAG] NotifyClose: connection closed unexpectedly:",
+						closeErr.Error(), 
+						" goroutines=", runtime.NumGoroutine())
 					select {
 					case broker.reconnectChan <- true:
 					default:
@@ -317,7 +332,7 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 		startErr := broker.Start()
 		if startErr != nil {
 			localHub.CaptureException(startErr)
-			println("[AMPS] failed to start consumer:", startErr.Error(), "- will retry")
+			println("[AMPS][DIAG] consumer_start_failed err=", startErr.Error(), " goroutines=", runtime.NumGoroutine())
 			select {
 			case <-time.After(2 * time.Second):
 			case <-broker.ctx.Done():
@@ -355,7 +370,8 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 func (broker *AMQPBroker) Start() error {	
 	broker.busy.Lock()
 	defer broker.busy.Unlock()
-
+	diagnosticsEnabled = broker.config.PprofEnabled
+	
 	// Hold WRITE lock across the entire Start critical section
     broker.connMutex.Lock()
     defer broker.connMutex.Unlock()
@@ -385,22 +401,33 @@ func (broker *AMQPBroker) Start() error {
 	)
 	if err != nil {
 		fmt.Println("[AMPS] Could not start consumer:", err.Error())
+		println("[AMPS][DIAG] consume_start_failed goroutines=", runtime.NumGoroutine())
 		return err
 	}
 	// --- 4. Update state atomically ---	
 	broker.running = true	
 	println("[AMPS] message consumer started successfully")
-
+	// --- DIAGNOSTIC ---
+	println("[AMPS][DIAG] consumer goroutine START goroutines=", runtime.NumGoroutine())
 	 // --- 5. Start background goroutine (outside the lock) ---
 	go func() {
+	 // log exit no matter how the goroutine ends
+		defer func() {
+			println("[AMPS][DIAG] consumer goroutine EXIT goroutines=", runtime.NumGoroutine())
+		}()
+
 		for {
 			select {
 			case <-broker.ctx.Done():
 				println("[AMPS] message consumer stopped by context")
+				 // --- DIAGNOSTIC ---
+			    println("[AMPS][DIAG] consumer_exit_reason=ctx_done goroutines=", runtime.NumGoroutine())
 				return
 			case d, ok := <-messages:
 				if !ok {
 					println("[AMPS] message channel closed")
+					// --- DIAGNOSTIC ---
+      				println("[AMPS][DIAG] consumer_exit_reason=message_channel_closed goroutines=", runtime.NumGoroutine())      
 					return
 				}
 				err := broker.messageHandler(d)
@@ -531,7 +558,9 @@ func (broker *AMQPBroker) Teardown() {
 
 	// Give goroutines a brief moment to exit cleanly
 	time.Sleep(100 * time.Millisecond)
-
+	// --- DIAGNOSTIC ---
+	println("[AMPS][DIAG] broker_teardown goroutines=", runtime.NumGoroutine())
+	
 	broker.connMutex.Lock()
 	defer broker.connMutex.Unlock()
 
@@ -583,6 +612,7 @@ func (wrapper AmqpMessageWrapper) Nack(multiple, requeue bool) error {
 	return wrapper.message.Nack(multiple, requeue)
 }
 
+var diagnosticsEnabled = false
 //
 // ────────────────────────────────────────────────────────────────────────────────
 //   Message Handler
@@ -597,6 +627,17 @@ func (wrapper AmqpMessageWrapper) Nack(multiple, requeue bool) error {
 //
 
 func (broker *AMQPBroker) messageHandler(msg amqp.Delivery) error {
+	if diagnosticsEnabled {
+		// --- DIAGNOSTIC: measure handler duration (minimal impact) ---
+		start := time.Now()
+		defer func() {
+			dur := time.Since(start)
+			if dur > 2*time.Second {
+				println("[AMPS][DIAG] slow_message_handler duration=", dur.String(),
+					" goroutines=", runtime.NumGoroutine())
+			}
+		}()
+	}
 	event, err := cloudevent.Unmarshal(msg.Body)
 	if err != nil {
 		msg.Nack(false, false)

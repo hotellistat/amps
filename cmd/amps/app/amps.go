@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"time"
 
@@ -37,7 +39,7 @@ var (
 func Run(conf *config.Config) {
 	defer sentry.Recover()
 	printBanner(*conf)
-
+	startDiagnostics(conf)
 	brokerTypes := map[string]broker.Shim{
 		"amqp": &broker.AMQPBroker{},
 	}
@@ -264,4 +266,54 @@ func handleDetailedHealthCheck(w http.ResponseWriter, req *http.Request, broker 
 	}
 
 	json.NewEncoder(w).Encode(detailedStatus)
+}
+
+// startDiagnostics bundles all internal profiling utilities.
+func startDiagnostics(conf *config.Config) {
+    if conf.PprofEnabled {
+        startPprofServer(conf.PprofPort)
+     	startGoroutineMonitor(conf.GoroutineMonitorInterval, conf.GoroutineLeakThreshold)
+	}    
+}
+
+// startPprofServer exposes Go pprof endpoints
+func startPprofServer(port int) {
+    addr := fmt.Sprintf(":%d", port)
+    go func() {
+        println("[AMPS] pprof diagnostics listening on", addr)
+        if err := http.ListenAndServe(addr, nil); err != nil {
+            println("[AMPS] pprof server error:", err.Error())
+        }
+    }()
+}
+
+// startGoroutineMonitor periodically logs the number of running goroutines.
+// If goroutines grow too far above baseline, a stack dump is emitted.
+func startGoroutineMonitor(interval time.Duration, threshold int) {
+    baseline := runtime.NumGoroutine()   
+
+    go func() {
+        ticker := time.NewTicker(interval)
+        println(fmt.Sprintf(
+            "[AMPS] goroutine monitor started. baseline=%d interval=%s threshold=%d",
+            baseline,
+            interval.String(),
+            threshold,
+        ))
+
+        for range ticker.C {
+            n := runtime.NumGoroutine()
+            drift := n - baseline
+
+            println(fmt.Sprintf("[AMPS] goroutines=%d baseline=%d drift=%+d", n, baseline, drift))
+
+            if drift > threshold {
+                println("[AMPS] possible goroutine leak detected — capturing stack snapshot")
+
+                buf := make([]byte, 2<<20) // 2MB
+                stacklen := runtime.Stack(buf, true)
+                println("[AMPS] goroutine stack snapshot:\n" + string(buf[:stacklen]))
+            }
+        }
+    }()
 }
