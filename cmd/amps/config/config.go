@@ -27,10 +27,11 @@ type Config struct {
 	WorkloadAddress         string        `description:"The workload address to which to send the job payload"`
 	WorkloadResponseTimeout time.Duration `description:"The wokrload response timeout, after which the job will be returned to the broker"`
 	// --- new for profiling ---
-    PprofEnabled             bool
-    PprofPort                int      
-    GoroutineMonitorInterval time.Duration
-    GoroutineLeakThreshold   int
+    PprofEnabled             bool          `description:"Enable pprof HTTP server for runtime profiling"`
+	PprofPort                int           `description:"The port on which the pprof server should listen"`
+	GoroutineMonitorInterval time.Duration `description:"Interval for periodic goroutine count monitoring"`
+	GoroutineLeakThreshold   int           `description:"Goroutine drift threshold above baseline to trigger stack dump"`
+
 }
 
 // New returns a new Config struct

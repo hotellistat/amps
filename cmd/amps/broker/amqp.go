@@ -198,9 +198,9 @@ func (broker *AMQPBroker) amqpConnectRoutine(uri string, connected chan bool) {
 	for {
 		select {
 		case <-broker.reconnectChan:
-			reconnectionAttempt++
-			broker.reconnectCount++
+			reconnectionAttempt++			
 			broker.connMutex.Lock()
+			broker.reconnectCount++
 			broker.lastReconnectAttempt = time.Now()
 			broker.connMutex.Unlock()
 			println("[AMPS] reconnection signal received (attempt", reconnectionAttempt, ") - Goroutines:", runtime.NumGoroutine())
