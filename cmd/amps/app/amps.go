@@ -71,10 +71,26 @@ func Run(conf *config.Config) {
 	}
 	// Info endpoint
 	if conf.MetricsEnabled {
-		metricsServer := http.NewServeMux()
-		metricsServer.Handle("/metrics", promhttp.Handler())
-		go http.ListenAndServe(fmt.Sprint(":", conf.MetricsPort), metricsServer)
-		println("[AMPS] Metrics server started")
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", promhttp.Handler())
+
+		addr := fmt.Sprint(":", conf.MetricsPort)
+
+		metricsSrv := &http.Server{
+			Addr:              addr,
+			Handler:           metricsMux,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+		}
+
+		go func() {
+			println("[AMPS] Metrics server started on", addr)
+			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				println("[AMPS] Metrics server error:", err.Error())
+			}
+		}()
 	}
 
 	go func() {
@@ -141,8 +157,20 @@ func Run(conf *config.Config) {
 			handleDetailedHealthCheck(w, req, &broker, &jobManifest, conf)
 		})
 
-		http.ListenAndServe(fmt.Sprint(":", conf.Port), server)
-
+		//http.ListenAndServe(fmt.Sprint(":", conf.Port), server)
+		addr := fmt.Sprint(":", conf.Port)
+		apiSrv := &http.Server{
+			Addr:              addr,
+			Handler:           server,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+		}
+		println("[AMPS] API server listening on", addr)
+		if err := apiSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			println("[AMPS] API server error:", err.Error())
+		}
 	}()
 
 	// General signal handling to teardown the worker
@@ -279,13 +307,24 @@ func startDiagnostics(conf *config.Config) {
 // startPprofServer exposes Go pprof endpoints
 func startPprofServer(port int) {
     addr := fmt.Sprintf(":%d", port)
+
+    srv := &http.Server{
+        Addr:              addr,
+        Handler:           nil, // default pprof mux
+        ReadHeaderTimeout: 5 * time.Second,
+        IdleTimeout:       60 * time.Second,
+        ReadTimeout:       30 * time.Second,
+        WriteTimeout:      30 * time.Second,
+    }
+
     go func() {
         println("[AMPS] pprof diagnostics listening on", addr)
-        if err := http.ListenAndServe(addr, nil); err != nil {
+        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             println("[AMPS] pprof server error:", err.Error())
         }
     }()
 }
+
 
 // startGoroutineMonitor periodically logs the number of running goroutines.
 // If goroutines grow too far above baseline, a stack dump is emitted.
