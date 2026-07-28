@@ -2,6 +2,7 @@ GOCMD=go
 GOBUILD=$(GOCMD) build
 BINARY_NAME=amps
 DIST_DIR=./dist/
+GOARCH ?= amd64
 
 
 dev:
@@ -11,7 +12,7 @@ server:
 	go run ./hack/webserver.go
 
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(DIST_DIR)$(BINARY_NAME) ./cmd/amps/amps.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) $(GOBUILD) -o $(DIST_DIR)$(BINARY_NAME) ./cmd/amps/amps.go
 
 runTests:
 	go test ./test/... -v --timeout 20s
