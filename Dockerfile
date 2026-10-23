@@ -1,10 +1,13 @@
-FROM golang AS build
+# Build on the native runner arch and cross-compile — Go needs no emulation.
+FROM --platform=$BUILDPLATFORM golang AS build
 
 WORKDIR /app
 
 COPY . .
 
-RUN make build
+ARG TARGETARCH
+
+RUN GOARCH=${TARGETARCH:-amd64} make build
 
 RUN ls -la dist
 

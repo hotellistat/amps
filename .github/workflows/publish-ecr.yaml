@@ -1,0 +1,50 @@
+name: Publish to ECR
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cmd/**/*"
+      - "pkg/**/*"
+      - Dockerfile
+      - makefile
+      - .github/workflows/publish-ecr.yaml
+  workflow_dispatch:
+
+env:
+  AWS_ECR_REPO: "prod/amps"
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_ECR_ROLE: ${{ secrets.AWS_ECR_ROLE }}
+
+jobs:
+  build-container:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ECR_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # arm64 only — the EKS cluster provisions no amd64 nodes. Harbor keeps its own
+      # amd64 builds via release.yaml for the workloads still on the old cluster.
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.AWS_ECR_REPO }}:${{ github.sha }}
